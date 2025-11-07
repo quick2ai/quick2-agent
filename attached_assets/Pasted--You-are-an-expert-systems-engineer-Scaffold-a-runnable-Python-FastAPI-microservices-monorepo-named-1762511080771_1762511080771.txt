@@ -1,0 +1,65 @@
+“You are an expert systems engineer. Scaffold a runnable Python/FastAPI microservices monorepo named quick2-agent with the following services and shared libs. Generate all files with working code, sample endpoints, tests, and Docker compose. Then run locally.
+
+Project requirements
+•	Python 3.11; package manager: uv or pip; testing: pytest; lint: ruff; type check: mypy.
+•	Services (FastAPI): gateway, planner, router, executor, validator, memory, benchmarks, dashboard.
+•	Infra: docker-compose.yml with redis, postgres (with pgvector), minio, prometheus, grafana, and all services wired by name + ports.
+•	Shared lib: libs/common with pydantic models (TaskSpec, AgentResult, Skill, RoutingDecision, Provenance).
+•	Load skills/skills.yaml at startup in planner and expose /skills endpoint.
+•	Router implements selection policy (weights, SLOs, allowlist), and returns Top-1 + alternates; stub benchmark cache using Redis (bench:… keys).
+•	Executor supports tool calls: browser, pdf_parser, vector_search, repo_reader, unit_test_runner, email_api, calendar_api, ppt_api, tts, asr. Tools are stubs with deterministic mocks and TODOs to bind real SDKs.
+•	Validator implements JSONSchema check, email rules, action schema, pytest runner, coverage check, bias metrics stub.
+•	Benchmarks service has cron jobs (APScheduler) to refresh leaderboards (placeholders) and cache Top-15 rows in Redis with timestamps.
+•	Memory service exposes /profile, /kb (CRUD), and uses Postgres + pgvector for embeddings (include embeddings table schema).
+•	Gateway exposes external API: POST /v1/tasks → orchestrates: planner.plan → router.recommend → executor.run → validator.check → result + provenance. Idempotency via X-Idempotency-Key.
+•	Dashboard (FastAPI + Jinja2) shows: task stream, success rate, p50/p95 latency, $/task, fallback rates, per-skill ROI. Serve at /.
+•	Telemetry: instrument with OpenTelemetry (OTEL_EXPORTER_OTLP_ENDPOINT env).
+•	Env files: .env.example with keys; secure defaults.
+•	Tests: pytest -q passes; include at least 1 test per service.
+
+Files & structure
+quick2-agent/
+  services/
+    gateway/...
+    planner/...
+    router/...
+    executor/...
+    validator/...
+    memory/...
+    benchmarks/...
+    dashboard/...
+  libs/common/...
+  skills/skills.yaml
+  docker-compose.yml
+  .env.example
+  pyproject.toml
+  README.md
+
+Key endpoints
+•	POST /v1/tasks (gateway): accepts TaskSpec, returns AgentResult.
+•	GET /v1/skills (planner): returns parsed skill registry.
+•	POST /v1/route (router): returns RoutingDecision.
+•	POST /v1/execute (executor): runs step; returns artifact refs (MinIO URIs).
+•	POST /v1/validate (validator): returns pass/fail + reasons.
+•	POST /v1/benchmarks/sync (benchmarks): refresh caches.
+•	GET /v1/memory/profile (memory): get Me-Model; PUT to update.
+
+Orchestration flow
+1.	Planner classifies and decomposes into steps with skill_ids.
+2.	Router pulls Top-15 benchmark rows from Redis; scores candidates; returns Top-1 + 2 alternates.
+3.	Executor builds RunPlan per skill template, invokes tools + model stub.
+4.	Validator checks; if fail, executor retries once; then router alternate.
+5.	Gateway assembles AgentResult + provenance and writes audit event to MinIO.
+
+Autonomy engine
+•	Config under config/autonomy.yaml with defaults: Approver (external comms), Collaborator (internal). Gateway enforces pause on Approver tasks by returning status: awaiting_approval with draft artifact.
+
+Self-improvement
+•	Nightly autotune job: sample failures; try prompt/model alternates; if ≥3% improvement, commit new skills/overrides.yaml and increment version.
+•	healthcheck job: track p95/$$ drift; open incidents to dashboard.
+
+Deliverables
+•	Start all services via docker-compose up.
+•	Provide sample cURL in README to submit a task for: COM-001 (email), OPS-001 (RAG), ENG-001 (code fix).
+•	Run tests automatically (pytest) and show passing.
+
