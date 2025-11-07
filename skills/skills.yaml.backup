@@ -1,0 +1,992 @@
+skills:
+  - skill_id: "COM-001"
+    name: "Email Composer"
+    description: "Compose and send professional emails with attachments"
+    task_types: ["COM"]
+    tools: ["email_api", "browser"]
+    template: "compose_email_v1"
+    slo_p95_ms: 3000.0
+    cost_per_call: 0.02
+    enabled: true
+    metadata:
+      version: "1.2.0"
+      requires_approval: true
+
+  - skill_id: "COM-002"
+    name: "Calendar Scheduler"
+    description: "Schedule meetings and manage calendar events"
+    task_types: ["COM"]
+    tools: ["calendar_api", "email_api"]
+    template: "schedule_meeting_v1"
+    slo_p95_ms: 2500.0
+    cost_per_call: 0.015
+    enabled: true
+    metadata:
+      version: "1.1.0"
+
+  - skill_id: "OPS-001"
+    name: "RAG Query Engine"
+    description: "Retrieve and generate answers from knowledge bases"
+    task_types: ["OPS", "ANALYSIS"]
+    tools: ["vector_search", "repo_reader"]
+    template: "rag_query_v2"
+    slo_p95_ms: 4000.0
+    cost_per_call: 0.05
+    enabled: true
+    metadata:
+      version: "2.0.1"
+
+  - skill_id: "OPS-002"
+    name: "Document Processor"
+    description: "Extract and analyze content from PDF documents"
+    task_types: ["OPS", "ANALYSIS"]
+    tools: ["pdf_parser", "vector_search"]
+    template: "pdf_analysis_v1"
+    slo_p95_ms: 5000.0
+    cost_per_call: 0.03
+    enabled: true
+    metadata:
+      version: "1.0.0"
+
+  - skill_id: "ENG-001"
+    name: "Code Fixer"
+    description: "Analyze and fix code issues with automated testing"
+    task_types: ["ENG"]
+    tools: ["repo_reader", "unit_test_runner"]
+    template: "code_fix_v1"
+    slo_p95_ms: 8000.0
+    cost_per_call: 0.08
+    enabled: true
+    metadata:
+      version: "1.3.0"
+
+  - skill_id: "ENG-002"
+    name: "Test Generator"
+    description: "Generate unit tests for code repositories"
+    task_types: ["ENG"]
+    tools: ["repo_reader", "unit_test_runner"]
+    template: "test_gen_v1"
+    slo_p95_ms: 6000.0
+    cost_per_call: 0.06
+    enabled: true
+    metadata:
+      version: "1.1.0"
+
+  - skill_id: "CREATIVE-001"
+    name: "Presentation Builder"
+    description: "Create PowerPoint presentations from outlines"
+    task_types: ["CREATIVE"]
+    tools: ["ppt_api", "browser"]
+    template: "ppt_builder_v1"
+    slo_p95_ms: 7000.0
+    cost_per_call: 0.04
+    enabled: true
+    metadata:
+      version: "1.0.0"
+
+  - skill_id: "CREATIVE-002"
+    name: "Voice Synthesizer"
+    description: "Convert text to speech with natural voices"
+    task_types: ["CREATIVE", "COM"]
+    tools: ["tts", "asr"]
+    template: "voice_synthesis_v1"
+    slo_p95_ms: 4500.0
+    cost_per_call: 0.025
+    enabled: true
+    metadata:
+      version: "1.0.0"
+
+  - skill_id: "ANALYSIS-001"
+    name: "Web Researcher"
+    description: "Research topics using web browsing and analysis"
+    task_types: ["ANALYSIS", "OPS"]
+    tools: ["browser", "vector_search"]
+    template: "web_research_v1"
+    slo_p95_ms: 10000.0
+    cost_per_call: 0.07
+    enabled: true
+    metadata:
+      version: "1.2.0"
+
+# ---------- METADATA ----------
+version: 1.0
+updated: 2025-11-06
+default_autonomy: Collaborator
+routing:
+  weights: {capability: 0.45, latency: 0.20, cost: 0.15, context: 0.10, reliability: 0.05, compliance: 0.05}
+  fallback_depth: 2
+  region: us
+  vendor_allowlist: ["OpenAI","Anthropic","Google","Amazon","xAI"]
+packs:
+  starter: [COM-001, COM-002, OPS-001, SLS-003, DAT-002, SYS-002]
+  advanced: [OPS-002, OPS-003, SLS-001, SLS-004, ENG-001, DAT-005, SYS-005]
+  vertical_bx: [DSP-001]
+  vertical_construction: [DSP-002]
+  vertical_saas_sales: [DSP-003]
+
+# ---------- SKILLS ----------
+skills:
+
+  # --- 1. COMMUNICATION & EXECUTIVE ASSISTANCE ---
+  - id: COM-001
+    name: Email Draft & Reply
+    enabled: true
+    domain: communication
+    modality: [text]
+    autonomy_default: Collaborator
+    benchmarks: [arena]
+    latency_ms_target: 2000
+    cost_tier: low
+    template: |
+      You are Levi's executive comms writer. Draft or reply with concise, confident tone.
+      Output <= 300 words, subject first, 3 bullets + CTA. No PII. Keep thread context.
+    tools: [email_api, contacts]
+    validator: {type: "email_rules", max_words: 300, tone: "levi_ceo", no_pii: true}
+
+  - id: COM-002
+    name: Meeting Notes & Action Items
+    enabled: true
+    domain: communication
+    modality: [audio, text]
+    autonomy_default: Collaborator
+    benchmarks: [ml_superb]
+    latency_ms_target: 180000
+    cost_tier: medium
+    template: |
+      Transcribe and summarize. Top section: 5-line executive summary. Then Actions:
+      each with Owner, Due Date, Priority. Include decisions and risks.
+    tools: [asr, calendar_api]
+    validator: {type: "actions_schema", require_owners: true, require_due_dates: true}
+
+  - id: COM-003
+    name: Calendar & Scheduling
+    enabled: true
+    domain: communication
+    modality: [tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 5000
+    cost_tier: low
+    template: |
+      Find 30-min slots within constraints. Avoid school pickups and existing holds.
+      Propose 3 options; upon approval create event and email invitees.
+    tools: [calendar_api, email_api]
+    validator: {type: "calendar_conflict", no_double_book: true}
+
+  - id: COM-004
+    name: Document Summaries
+    enabled: true
+    domain: communication
+    modality: [text]
+    autonomy_default: Collaborator
+    benchmarks: [livebench]
+    latency_ms_target: 120000
+    cost_tier: medium
+    template: |
+      Summarize with: TL;DR (5 bullets), Key Risks, Open Questions, Next Actions.
+      Cite section headers if present.
+    tools: [pdf_parser]
+    validator: {type: "summary_shape", sections: ["TLDR","Risks","Questions","Actions"]}
+
+  - id: COM-005
+    name: Communication Tone Calibration
+    enabled: true
+    domain: communication
+    modality: [text]
+    autonomy_default: Collaborator
+    benchmarks: [arena]
+    latency_ms_target: 1500
+    cost_tier: low
+    template: |
+      Rewrite text to Levi's tone: crisp, direct, optimistic, no fluff. Keep facts.
+    tools: []
+    validator: {type: "style_score", target: 0.9}
+
+  # --- 2. SALES, MARKETING & BUSINESS DEVELOPMENT ---
+  - id: SLS-001
+    name: Prospect Research
+    enabled: true
+    domain: sales
+    modality: [tools, text]
+    autonomy_default: Collaborator
+    benchmarks: [gaia]
+    latency_ms_target: 60000
+    cost_tier: medium
+    template: |
+      Research target account: firmographics, tech stack, initiatives, buying centers, key people.
+      Deliver 1-page brief with 3 hypotheses and 5 discovery questions. Cite URLs.
+    tools: [browser, serp, dedupe]
+    validator: {type: "citations", min_unique_domains: 3}
+
+  - id: SLS-002
+    name: Opportunity Qualification
+    enabled: true
+    domain: sales
+    modality: [text, tools]
+    autonomy_default: Collaborator
+    benchmarks: [livebench]
+    latency_ms_target: 8000
+    cost_tier: low
+    template: |
+      Apply MEDDICCC. Fill fields. Identify gaps and next-best actions.
+    tools: [crm_api]
+    validator: {type: "form_completeness", required_pct: 1.0}
+
+  - id: SLS-003
+    name: Proposal / POV Generation
+    enabled: true
+    domain: sales
+    modality: [text]
+    autonomy_default: Approver
+    benchmarks: [arena]
+    latency_ms_target: 90000
+    cost_tier: medium
+    template: |
+      Produce a 12-section POV: Current State, Pain, Consequences, Future State, Solution,
+      Business Outcomes, Proof, Timeline, R&R, Risks, Pricing, CTA. Fit vertical voice.
+    tools: [doc_gen, brand_styles]
+    validator: {type: "section_presence", sections: 12}
+
+  - id: SLS-004
+    name: Competitive Intelligence
+    enabled: true
+    domain: sales
+    modality: [tools, text]
+    autonomy_default: Collaborator
+    benchmarks: [gaia]
+    latency_ms_target: 45000
+    cost_tier: medium
+    template: |
+      Compare 3 competitors: positioning, pricing hints, differentiators, traps, counter-moves.
+      Cite sources and tag risk by impact.
+    tools: [browser, serp]
+    validator: {type: "citations", min_unique_domains: 3}
+
+  - id: SLS-005
+    name: Campaign Email Sequencer
+    enabled: true
+    domain: sales
+    modality: [text, tools]
+    autonomy_default: Collaborator
+    benchmarks: [arena]
+    latency_ms_target: 4000
+    cost_tier: low
+    template: |
+      Generate 5-step sequence with persona hooks, value props, and CTAs.
+      Include {{placeholders}} and A/B variants.
+    tools: [email_api, marketing_api]
+    validator: {type: "sequence_rules", steps: 5, placeholders_ok: true}
+
+  - id: SLS-006
+    name: Sales Call Role-Play
+    enabled: true
+    domain: sales
+    modality: [audio, text]
+    autonomy_default: Collaborator
+    benchmarks: [gaia]
+    latency_ms_target: 120000
+    cost_tier: medium
+    template: |
+      Simulate 5-minute discovery call. Log objections and evaluate performance against rubric.
+    tools: [tts, asr]
+    validator: {type: "rubric_score", min_score: 0.7}
+
+  # --- 3. OPERATIONS, PROJECT & KNOWLEDGE MGMT ---
+  - id: OPS-001
+    name: RAG Extraction (Long Docs)
+    enabled: true
+    domain: operations
+    modality: [text, vision, tools]
+    autonomy_default: Collaborator
+    benchmarks: [mmmu]
+    latency_ms_target: 180000
+    cost_tier: medium
+    template: |
+      Answer strictly from provided docs. Output JSON per schema. For each claim, add cite(page:line).
+    tools: [pdf_parser, vector_search, table_ocr]
+    validator: {type: "jsonschema", schema: "schemas/rag_extract.schema.json", citations_required: true}
+
+  - id: OPS-002
+    name: Contract Risk Analysis
+    enabled: true
+    domain: operations
+    modality: [text]
+    autonomy_default: Collaborator
+    benchmarks: [mmmu]
+    latency_ms_target: 120000
+    cost_tier: medium
+    template: |
+      Compare to baseline clauses. Flag deviations by severity and propose redlines.
+    tools: [pdf_parser]
+    validator: {type: "risk_flags", min_flags: 1}
+
+  - id: OPS-003
+    name: Knowledge Base Builder
+    enabled: true
+    domain: operations
+    modality: [tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 600000
+    cost_tier: low
+    template: |
+      Chunk, embed, and index docs. Tag by role and topic. Build FAQ.
+    tools: [vector_search, embedder]
+    validator: {type: "kb_health", search_latency_ms: 500}
+
+  - id: OPS-004
+    name: Policy Compliance Scanner
+    enabled: true
+    domain: operations
+    modality: [text]
+    autonomy_default: Approver
+    benchmarks: [livebench]
+    latency_ms_target: 90000
+    cost_tier: medium
+    template: |
+      Scan for PII/GDPR/SOX. Produce risk table with remediation steps.
+    tools: [text_scanner]
+    validator: {type: "risk_table", require_remediation: true}
+
+  - id: OPS-005
+    name: SOP / Handover Generator
+    enabled: true
+    domain: operations
+    modality: [text]
+    autonomy_default: Collaborator
+    benchmarks: [arena]
+    latency_ms_target: 60000
+    cost_tier: low
+    template: |
+      Produce SOP with Purpose, Scope, Roles, Steps, SLAs, Versioning.
+    tools: [doc_gen]
+    validator: {type: "section_presence", sections: 6}
+
+  - id: OPS-006
+    name: Gantt & Project Planner
+    enabled: true
+    domain: operations
+    modality: [tools, text]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 15000
+    cost_tier: low
+    template: |
+      Build a 6-12 week plan with dependencies, risks, and owners. Export Gantt CSV.
+    tools: [project_api, csv_export]
+    validator: {type: "plan_integrity", dependencies_resolved: true}
+
+  - id: OPS-007
+    name: Change Management Tracker
+    enabled: true
+    domain: operations
+    modality: [tools, text]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 8000
+    cost_tier: low
+    template: |
+      Diff releases and generate changelog with semantic versioning.
+    tools: [repo_api]
+    validator: {type: "semver_rules", has_diff: true}
+
+  # --- 4. ENGINEERING, SOFTWARE & ROBOTICS ---
+  - id: ENG-001
+    name: Code Patch & Test Fix
+    enabled: true
+    domain: engineering
+    modality: [text, tools]
+    autonomy_default: Collaborator
+    benchmarks: [swe_bench_verified]
+    latency_ms_target: 180000
+    cost_tier: medium
+    template: |
+      Minimal diff to make failing test pass. Output unified diff only. No prose.
+    tools: [repo_reader, unit_test_runner, diff_applier]
+    validator: {type: "pytest", tests_green: true, max_changed_files: 3, max_lines: 300}
+
+  - id: ENG-002
+    name: Code Generation / Refactor
+    enabled: true
+    domain: engineering
+    modality: [text, tools]
+    autonomy_default: Collaborator
+    benchmarks: [livecodebench]
+    latency_ms_target: 90000
+    cost_tier: medium
+    template: |
+      Refactor module. Preserve API. Improve complexity and add tests. Provide patch.
+    tools: [repo_reader, static_analysis]
+    validator: {type: "build_and_lint", build_ok: true, complexity_delta: -0.1}
+
+  - id: ENG-003
+    name: Firmware / IoT Script Author
+    enabled: true
+    domain: engineering
+    modality: [text]
+    autonomy_default: Collaborator
+    benchmarks: [livecodebench]
+    latency_ms_target: 120000
+    cost_tier: medium
+    template: |
+      Generate embedded logic with memory constraints. Include pin map and comments.
+    tools: []
+    validator: {type: "compile_stub", syntax_ok: true}
+
+  - id: ENG-004
+    name: Robotics Launch Builder
+    enabled: true
+    domain: engineering
+    modality: [text, tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 120000
+    cost_tier: medium
+    template: |
+      Produce ROS2 launch files, wiring diagram steps, and power budget table.
+    tools: [diagram_export]
+    validator: {type: "ros2_syntax", launches_validate: true}
+
+  - id: ENG-005
+    name: CAD / 3D Prototype Designer
+    enabled: true
+    domain: engineering
+    modality: [tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 180000
+    cost_tier: medium
+    template: |
+      Generate STL for FDM printing (Bambu P1S). Include infill and tolerances.
+    tools: [cad_gen, stl_validator]
+    validator: {type: "stl_check", manifold: true}
+
+  - id: ENG-006
+    name: Simulation & Testing
+    enabled: true
+    domain: engineering
+    modality: [tools, text]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 300000
+    cost_tier: medium
+    template: |
+      Create digital twin scenario and key KPIs; run sensitivity analysis.
+    tools: [sim_engine]
+    validator: {type: "kpi_presence", kpis_min: 3}
+
+  - id: ENG-007
+    name: QA / Regression Suite
+    enabled: true
+    domain: engineering
+    modality: [tools]
+    autonomy_default: Collaborator
+    benchmarks: [swe_bench_verified]
+    latency_ms_target: 300000
+    cost_tier: medium
+    template: |
+      Run full test suite, capture failures, coverage Δ, and suspected culprit modules.
+    tools: [ci_runner]
+    validator: {type: "coverage_threshold", min_coverage: 0.8}
+
+  - id: ENG-008
+    name: Versioning & Rollback
+    enabled: true
+    domain: engineering
+    modality: [tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 10000
+    cost_tier: low
+    template: |
+      Roll new model/code version to canary; rollback if success < baseline by 5%.
+    tools: [deploy_api]
+    validator: {type: "canary_compare", delta_threshold: -0.05}
+
+  # --- 5. DATA, ANALYTICS & FINANCE ---
+  - id: DAT-001
+    name: Data Cleaning & ETL
+    enabled: true
+    domain: data
+    modality: [tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 600000
+    cost_tier: low
+    template: |
+      Deduplicate, normalize country codes, load to Snowflake. Produce audit log.
+    tools: [etl_tool]
+    validator: {type: "row_counts_match", no_duplicates: true}
+
+  - id: DAT-002
+    name: Data Visualization
+    enabled: true
+    domain: data
+    modality: [tools, text]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 30000
+    cost_tier: low
+    template: |
+      Build dashboard: KPIs, time-series, segment breakdowns; export PNG + HTML.
+    tools: [bi_api, chart_export]
+    validator: {type: "viz_qc", labels_present: true}
+
+  - id: DAT-003
+    name: Forecasting / Predictive Model
+    enabled: true
+    domain: data
+    modality: [tools, text]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 180000
+    cost_tier: medium
+    template: |
+      Build model, backtest, report RMSE and feature importances. Ship notebook + artifacts.
+    tools: [python_runner]
+    validator: {type: "rmse_threshold", max_rmse: 0.2}
+
+  - id: DAT-004
+    name: Financial Modeling
+    enabled: true
+    domain: finance
+    modality: [tools, text]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 120000
+    cost_tier: low
+    template: |
+      Build 5-year cashflow, TAM/SAM/SOM, cap table. Output xlsx.
+    tools: [excel_api]
+    validator: {type: "balance_check", balanced: true}
+
+  - id: DAT-005
+    name: Cost Optimization & Vendor Arbitration
+    enabled: true
+    domain: data
+    modality: [tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 8000
+    cost_tier: low
+    template: |
+      Analyze cost/latency by model; propose cheaper alternates under ≤2% quality delta.
+    tools: [router_logs]
+    validator: {type: "savings_projection", include_alt_models: true}
+
+  - id: DAT-006
+    name: ROI / Scenario Simulation
+    enabled: true
+    domain: finance
+    modality: [tools, text]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 90000
+    cost_tier: low
+    template: |
+      Simulate base/stretch/aggressive. Output ROI and resource plan.
+    tools: [sim_engine]
+    validator: {type: "scenario_presence", scenarios: 3}
+
+  # --- 6. CREATIVE & MULTIMODAL ---
+  - id: CRE-001
+    name: Image Generation
+    enabled: true
+    domain: creative
+    modality: [vision]
+    autonomy_default: Collaborator
+    benchmarks: [t2i_arena]
+    latency_ms_target: 30000
+    cost_tier: medium
+    template: |
+      Generate 3 hero variants per prompt; brand-safe; export PNG + prompt used.
+    tools: [t2i]
+    validator: {type: "image_qc", safe: true, resolution: ">=1024x1024"}
+
+  - id: CRE-002
+    name: Video Generation
+    enabled: true
+    domain: creative
+    modality: [vision]
+    autonomy_default: Collaborator
+    benchmarks: [vbench]
+    latency_ms_target: 300000
+    cost_tier: high
+    template: |
+      10-20s video, 24fps, script adherence. Provide caption file.
+    tools: [t2v]
+    validator: {type: "video_qc", length_ok: true, fps_ok: true}
+
+  - id: CRE-003
+    name: Graphic Design / Branding
+    enabled: true
+    domain: creative
+    modality: [vision, text]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 60000
+    cost_tier: medium
+    template: |
+      Produce brand-safe assets (logos/ads). Include color and spacing tokens.
+    tools: [design_api]
+    validator: {type: "brand_token_presence", tokens_min: 6}
+
+  - id: CRE-004
+    name: Presentation Builder
+    enabled: true
+    domain: creative
+    modality: [text, tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 45000
+    cost_tier: low
+    template: |
+      Build 12-18 slide deck with agenda and speaker notes.
+    tools: [ppt_api]
+    validator: {type: "slide_count", min: 12, max: 18}
+
+  - id: CRE-005
+    name: Storyboard & Script Writing
+    enabled: true
+    domain: creative
+    modality: [text]
+    autonomy_default: Collaborator
+    benchmarks: [arena]
+    latency_ms_target: 40000
+    cost_tier: low
+    template: |
+      Draft 2-minute script with hook, body, close. Provide beats + camera notes.
+    tools: []
+    validator: {type: "duration_words", approx_words: 300}
+
+  - id: CRE-006
+    name: Text-to-Speech Voiceover
+    enabled: true
+    domain: creative
+    modality: [audio]
+    autonomy_default: Collaborator
+    benchmarks: [ml_superb]
+    latency_ms_target: 30000
+    cost_tier: low
+    template: |
+      Natural pacing, studio quality, export WAV + VTT captions.
+    tools: [tts]
+    validator: {type: "audio_qc", clipping: false}
+
+  - id: CRE-007
+    name: Speech-to-Text Transcription
+    enabled: true
+    domain: creative
+    modality: [audio]
+    autonomy_default: Collaborator
+    benchmarks: [ml_superb]
+    latency_ms_target: 120000
+    cost_tier: medium
+    template: |
+      High-accuracy transcript with timestamps every 30s; diarize speakers if possible.
+    tools: [asr]
+    validator: {type: "wer_threshold", max_wer: 0.1}
+
+  # --- 7. KNOWLEDGE, TRAINING & EDUCATION ---
+  - id: EDU-001
+    name: Course / Module Author
+    enabled: true
+    domain: education
+    modality: [text, tools, vision]
+    autonomy_default: Collaborator
+    benchmarks: [arena]
+    latency_ms_target: 90000
+    cost_tier: medium
+    template: |
+      Create 10–15 minute module: slides, script, quiz (5 Q), and recap card.
+    tools: [ppt_api, quiz_gen]
+    validator: {type: "quiz_presence", questions: 5}
+
+  - id: EDU-002
+    name: Quiz & Assessment Builder
+    enabled: true
+    domain: education
+    modality: [text, tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 6000
+    cost_tier: low
+    template: |
+      Build 10 items (MCQ/TF), balanced difficulty, with answer key + rationale.
+    tools: [quiz_gen]
+    validator: {type: "item_count", items: 10}
+
+  - id: EDU-003
+    name: Summarization Tutor
+    enabled: true
+    domain: education
+    modality: [text]
+    autonomy_default: Collaborator
+    benchmarks: [livebench]
+    latency_ms_target: 5000
+    cost_tier: low
+    template: |
+      Teach via Socratic Q&A; confirm understanding with a 3-question check.
+    tools: []
+    validator: {type: "quiz_presence", questions: 3}
+
+  - id: EDU-004
+    name: ADHD Focus Coach
+    enabled: true
+    domain: education
+    modality: [text, tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 3000
+    cost_tier: low
+    template: |
+      Break work into 25-min sprints with 5-min breaks; show visible progress bar.
+    tools: [timer, calendar_api]
+    validator: {type: "block_shape", sprint_minutes: 25}
+
+  - id: EDU-005
+    name: Learning Plan Generator
+    enabled: true
+    domain: education
+    modality: [text, tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 8000
+    cost_tier: low
+    template: |
+      Build weekly plan by goals/time; add check-ins; export ICS.
+    tools: [calendar_api]
+    validator: {type: "ics_export", has_checkins: true}
+
+  # --- 8. TRANSLATION, L10N & ACCESSIBILITY ---
+  - id: L10N-001
+    name: Translation
+    enabled: true
+    domain: localization
+    modality: [text]
+    autonomy_default: Collaborator
+    benchmarks: [wmt25]
+    latency_ms_target: 4000
+    cost_tier: low
+    template: |
+      Translate preserving placeholders and formatting. Provide bilingual table if short.
+    tools: []
+    validator: {type: "placeholder_parity", ok: true}
+
+  - id: L10N-002
+    name: Localization QA
+    enabled: true
+    domain: localization
+    modality: [tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 15000
+    cost_tier: low
+    template: |
+      Crawl UI for string overflows, date/currency formats per locale.
+    tools: [ui_crawler]
+    validator: {type: "l10n_issues", issues_listed: true}
+
+  - id: L10N-003
+    name: Accessibility Review
+    enabled: true
+    domain: localization
+    modality: [tools, text]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 15000
+    cost_tier: low
+    template: |
+      Audit WCAG AA. Produce fixes prioritized by severity.
+    tools: [a11y_scanner]
+    validator: {type: "a11y_report", has_priorities: true}
+
+  # --- 9. COMPLIANCE, ETHICS & SECURITY ---
+  - id: GOV-001
+    name: Bias & Fairness Audit
+    enabled: true
+    domain: governance
+    modality: [tools, text]
+    autonomy_default: Approver
+    benchmarks: []
+    latency_ms_target: 180000
+    cost_tier: medium
+    template: |
+      Evaluate outputs vs bias metrics. Recommend dataset/prompt mitigations.
+    tools: [bias_checker]
+    validator: {type: "bias_metrics", max_delta: 0.05}
+
+  - id: GOV-002
+    name: Security Policy Review
+    enabled: true
+    domain: governance
+    modality: [tools, text]
+    autonomy_default: Approver
+    benchmarks: [swe_bench_verified]
+    latency_ms_target: 60000
+    cost_tier: low
+    template: |
+      Static scan of code/policies. Summarize critical/high issues and fixes.
+    tools: [static_analyzer]
+    validator: {type: "vuln_report", no_criticals: true}
+
+  - id: GOV-003
+    name: Audit Trail & Provenance
+    enabled: true
+    domain: governance
+    modality: [tools]
+    autonomy_default: Approver
+    benchmarks: []
+    latency_ms_target: 3000
+    cost_tier: low
+    template: |
+      Persist immutable event: inputs, model, version_hash, cost, latency, sources.
+    tools: [audit_store]
+    validator: {type: "immutability", write_once: true}
+
+  - id: GOV-004
+    name: Regulatory Gap Analysis
+    enabled: true
+    domain: governance
+    modality: [text, tools]
+    autonomy_default: Approver
+    benchmarks: []
+    latency_ms_target: 120000
+    cost_tier: medium
+    template: |
+      Map current practice to regulation; list gaps and remediation roadmap.
+    tools: [policy_db]
+    validator: {type: "gap_report", remediation_present: true}
+
+  # --- 10. SYSTEM HEALTH & SELF-IMPROVEMENT ---
+  - id: SYS-001
+    name: Model Health Monitor
+    enabled: true
+    domain: system
+    modality: [tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 3000
+    cost_tier: low
+    template: |
+      Track latency/cost/quality drift per endpoint; flag anomalies.
+    tools: [metrics_store]
+    validator: {type: "drift_detector", threshold_pct: 15}
+
+  - id: SYS-002
+    name: Self-Critique & Auto-Tune
+    enabled: true
+    domain: system
+    modality: [tools, text]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 600000
+    cost_tier: low
+    template: |
+      Sample failures; try prompt/model alternates; compare metrics; promote winners.
+    tools: [tuner, router_logs]
+    validator: {type: "improvement", min_delta: 0.03}
+
+  - id: SYS-003
+    name: Feedback Capture & Reinforcement
+    enabled: true
+    domain: system
+    modality: [tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 2000
+    cost_tier: low
+    template: |
+      Ask thumbs up/down with reason; store and reweight routing.
+    tools: [feedback_db]
+    validator: {type: "feedback_rate", min_resp_rate: 0.3}
+
+  - id: SYS-004
+    name: Benchmark Sync
+    enabled: true
+    domain: system
+    modality: [tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 600000
+    cost_tier: low
+    template: |
+      Ingest latest leaderboards; cache Top-15 rows with timestamps.
+    tools: [bench_ingestors]
+    validator: {type: "freshness", max_age_hours: 24}
+
+  - id: SYS-005
+    name: Cost/Latency Arbitration
+    enabled: true
+    domain: system
+    modality: [tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 3000
+    cost_tier: low
+    template: |
+      If SLA breach projected, switch to alternate; log reason.
+    tools: [router]
+    validator: {type: "sla_guard", breaches_zero: true}
+
+  - id: SYS-006
+    name: Skill Utilization Analyzer
+    enabled: true
+    domain: system
+    modality: [tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 4000
+    cost_tier: low
+    template: |
+      Rank skills by ROI (usage x satisfaction / cost). Suggest retire/invest.
+    tools: [analytics]
+    validator: {type: "roi_calc", suggestions_present: true}
+
+  - id: SYS-007
+    name: Self-Update Executor
+    enabled: true
+    domain: system
+    modality: [tools]
+    autonomy_default: Collaborator
+    benchmarks: []
+    latency_ms_target: 120000
+    cost_tier: low
+    template: |
+      Deploy tuned prompts/models via canary; keep rollback plan.
+    tools: [ci_cd]
+    validator: {type: "deployment_logs", rollback_tested: true}
+
+  # --- 11. DOMAIN PACKS (aggregators) ---
+  - id: DSP-001
+    name: Pack: Building Automation / Siemens BX
+    enabled: true
+    domain: vertical
+    modality: [text, tools, vision]
+    autonomy_default: Collaborator
+    includes: [OPS-001, OPS-002, SLS-003, DAT-002, OPS-006]
+    template: "Enable BX-specific glossaries, playbooks, and persona prompts."
+    tools: [pdf_parser, vector_search, ppt_api]
+    validator: {type: "pack_health", skills_enabled: 5}
+
+  - id: DSP-002
+    name: Pack: Construction / Controls Contractors
+    enabled: true
+    domain: vertical
+    modality: [text, tools]
+    autonomy_default: Collaborator
+    includes: [OPS-001, OPS-002, ENG-005]
+    template: "Controls points, submittals, BOM estimate, and safety checklists."
+    tools: [pdf_parser, cad_gen]
+    validator: {type: "pack_health", skills_enabled: 3}
+
+  - id: DSP-003
+    name: Pack: SaaS Sales Enablement
+    enabled: true
+    domain: vertical
+    modality: [text, tools]
+    autonomy_default: Collaborator
+    includes: [SLS-001, SLS-002, SLS-003, SLS-004, SLS-005]
+    template: "Prospecting, qualification, POVs, battlecards, campaigns."
+    tools: [crm_api, email_api]
+    validator: {type: "pack_health", skills_enabled: 5}
