@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'quick2-services'
+    static_configs:
+      - targets: 
+        - 'gateway:8000'
+        - 'planner:8001'
+        - 'router:8002'
+        - 'executor:8003'
+        - 'validator:8004'
+        - 'memory:8005'
+        - 'benchmarks:8006'
+        - 'dashboard:8007'

@@ -1,0 +1,40 @@
+autonomy:
+  modes:
+    approver:
+      description: "Requires human approval for external communications and sensitive actions"
+      auto_execute: false
+      approval_required:
+        - email_api
+        - calendar_api
+        - external_api_calls
+      timeout_seconds: 3600
+      notification_webhook: null
+    
+    collaborator:
+      description: "Full autonomy for internal operations and non-sensitive actions"
+      auto_execute: true
+      approval_required: []
+      timeout_seconds: 300
+      notification_webhook: null
+
+  default_mode: "collaborator"
+  
+  skill_overrides:
+    COM-001:
+      mode: "approver"
+      reason: "Email sending requires approval"
+    
+    COM-002:
+      mode: "approver"
+      reason: "Calendar modifications require approval"
+
+  rate_limits:
+    max_tasks_per_minute: 100
+    max_concurrent_tasks: 50
+    max_cost_per_hour: 100.0
+
+  safety:
+    enable_content_filter: true
+    enable_pii_detection: true
+    max_retry_attempts: 3
+    circuit_breaker_threshold: 10
