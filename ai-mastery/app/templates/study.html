@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Study Mode — Week {{ week_number }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto fade-in">
+    <!-- Week Header -->
+    <div class="bg-navy-light border border-navy-mid rounded-xl p-6 mb-6">
+        <div class="flex items-center justify-between mb-3">
+            <span class="text-xs uppercase tracking-wider text-cream/50">Week {{ week_number }} of 12</span>
+            <a href="/curriculum" class="text-sm text-cream/40 hover:text-gold transition-colors">&larr; Back to Curriculum</a>
+        </div>
+        <h1 class="text-2xl font-bold text-gold mb-2">{{ week_title }}</h1>
+        <p class="text-cream/60">{{ week_objective }}</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Chat Panel -->
+        <div class="lg:col-span-2">
+            <div class="bg-navy-light border border-navy-mid rounded-xl flex flex-col" style="height: 500px;">
+                <!-- Messages -->
+                <div class="flex-1 overflow-y-auto p-4 space-y-4" id="chat-messages">
+                    {% if messages %}
+                        {% for msg in messages %}
+                        <div class="{% if msg.role == 'user' %}ml-8{% else %}mr-8{% endif %}">
+                            <div class="{% if msg.role == 'user' %}bg-blue/20 border-blue/30{% else %}bg-navy-mid border-navy-mid{% endif %} border rounded-lg p-3">
+                                <div class="text-xs text-cream/40 mb-1">{{ 'You' if msg.role == 'user' else 'Claude' }}</div>
+                                <div class="text-sm text-cream/90 prose">{{ msg.content }}</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-center text-cream/30 py-8">
+                            <p>Start a conversation about Week {{ week_number }}'s material.</p>
+                            <p class="text-xs mt-1">Claude is pre-loaded with this week's objectives and your Quick2Labs context.</p>
+                        </div>
+                    {% endif %}
+                    <!-- Streaming response container -->
+                    <div id="stream-container" class="hidden mr-8">
+                        <div class="bg-navy-mid border border-navy-mid rounded-lg p-3">
+                            <div class="text-xs text-cream/40 mb-1">Claude</div>
+                            <div class="text-sm text-cream/90 prose" id="stream-content"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Input -->
+                <div class="border-t border-navy-mid p-3">
+                    <form id="chat-form" class="flex gap-2">
+                        <input type="text" id="chat-input" name="message"
+                               class="flex-1 bg-navy-mid border border-navy-mid rounded-lg px-4 py-2 text-cream placeholder:text-cream/30 focus:outline-none focus:ring-2 focus:ring-gold/50"
+                               placeholder="Ask about this week's material..." autocomplete="off">
+                        <button type="submit"
+                                class="bg-gold hover:bg-gold/80 text-navy font-semibold px-5 py-2 rounded-lg transition-colors flex-shrink-0">
+                            Send
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="space-y-4">
+            <!-- Mini Quiz Button -->
+            <button hx-post="/study/{{ curriculum_id }}/{{ week_number }}/quiz"
+                    hx-target="#mini-quiz-content"
+                    hx-swap="innerHTML"
+                    class="w-full bg-gold/20 hover:bg-gold/30 border border-gold/30 text-gold font-semibold py-3 px-4 rounded-lg transition-colors text-sm">
+                Quiz Me on This Week
+            </button>
+            <div id="mini-quiz-content" class="bg-navy-light border border-navy-mid rounded-xl p-4 text-sm prose hidden-if-empty"></div>
+
+            <!-- Week Content -->
+            {% if week_content %}
+            <div class="bg-navy-light border border-navy-mid rounded-xl p-4">
+                <h3 class="text-sm uppercase tracking-wider text-gold mb-3">Week Material</h3>
+                <div class="text-sm prose text-cream/70">{{ week_content | safe }}</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const chatForm = document.getElementById('chat-form');
+    const chatInput = document.getElementById('chat-input');
+    const chatMessages = document.getElementById('chat-messages');
+    const streamContainer = document.getElementById('stream-container');
+    const streamContent = document.getElementById('stream-content');
+
+    chatForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const message = chatInput.value.trim();
+        if (!message) return;
+
+        // Add user message to chat
+        const userDiv = document.createElement('div');
+        userDiv.className = 'ml-8 fade-in';
+        userDiv.innerHTML = `
+            <div class="bg-blue/20 border-blue/30 border rounded-lg p-3">
+                <div class="text-xs text-cream/40 mb-1">You</div>
+                <div class="text-sm text-cream/90">${escapeHtml(message)}</div>
+            </div>`;
+        chatMessages.insertBefore(userDiv, streamContainer);
+
+        // Clear input and show stream container
+        chatInput.value = '';
+        streamContainer.classList.remove('hidden');
+        streamContent.innerHTML = '<span class="animate-pulse text-cream/30">Thinking...</span>';
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        // Stream response
+        try {
+            const response = await fetch('/study/{{ curriculum_id }}/{{ week_number }}/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message })
+            });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullText = '';
+            streamContent.innerHTML = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                // Parse SSE data
+                const lines = chunk.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = line.slice(6);
+                        if (data === '[DONE]') continue;
+                        fullText += data;
+                        streamContent.innerHTML = marked.parse(fullText);
+                    }
+                }
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            // Replace stream container with permanent message
+            streamContainer.classList.add('hidden');
+            const assistantDiv = document.createElement('div');
+            assistantDiv.className = 'mr-8 fade-in';
+            assistantDiv.innerHTML = `
+                <div class="bg-navy-mid border border-navy-mid rounded-lg p-3">
+                    <div class="text-xs text-cream/40 mb-1">Claude</div>
+                    <div class="text-sm text-cream/90 prose">${marked.parse(fullText)}</div>
+                </div>`;
+            chatMessages.insertBefore(assistantDiv, streamContainer);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        } catch (err) {
+            streamContent.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`;
+        }
+    });
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Show mini-quiz content when loaded
+    document.body.addEventListener('htmx:afterSwap', (e) => {
+        if (e.detail.target.id === 'mini-quiz-content') {
+            e.detail.target.classList.remove('hidden-if-empty');
+            e.detail.target.innerHTML = marked.parse(e.detail.target.textContent);
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Hero -->
+    <div class="text-center mb-10">
+        <h1 class="text-3xl font-bold mb-2">AI/ML Mastery Diagnostic</h1>
+        <p class="text-cream/60 text-lg">Personalized learning engine for Levi Webster, Quick2Labs</p>
+    </div>
+
+    {% if latest_attempt and latest_attempt.status == 'completed' %}
+    <!-- Status Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div class="bg-navy-light border border-navy-mid rounded-xl p-5">
+            <div class="text-cream/50 text-xs uppercase tracking-wider mb-1">Current Level</div>
+            <div class="text-2xl font-bold text-gold">{{ latest_attempt.level }}</div>
+        </div>
+        <div class="bg-navy-light border border-navy-mid rounded-xl p-5">
+            <div class="text-cream/50 text-xs uppercase tracking-wider mb-1">Overall Score</div>
+            <div class="text-2xl font-bold text-blue">{{ latest_attempt.overall_score }}%</div>
+        </div>
+        <div class="bg-navy-light border border-navy-mid rounded-xl p-5">
+            <div class="text-cream/50 text-xs uppercase tracking-wider mb-1">Weakest Domain</div>
+            <div class="text-lg font-semibold text-red-400">
+                {% if latest_attempt.gaps %}{{ latest_attempt.gaps[-1] }}{% else %}—{% endif %}
+            </div>
+        </div>
+        <div class="bg-navy-light border border-navy-mid rounded-xl p-5">
+            <div class="text-cream/50 text-xs uppercase tracking-wider mb-1">Curriculum</div>
+            <div class="text-lg font-semibold">
+                {% if has_curriculum %}
+                    <a href="/curriculum" class="text-gold hover:underline">View Plan</a>
+                {% else %}
+                    <span class="text-cream/40">Not generated</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Knowledge Heatmap -->
+    <div class="bg-navy-light border border-navy-mid rounded-xl p-6 mb-8">
+        <h2 class="text-lg font-semibold mb-4 text-gold">Knowledge Heatmap</h2>
+        <div class="space-y-3">
+            {% for domain, score in latest_attempt.domain_scores.items() %}
+            <div>
+                <div class="flex justify-between text-sm mb-1">
+                    <span class="text-cream/80">{{ domain }}</span>
+                    <span class="font-mono text-cream/60">{{ score }}%</span>
+                </div>
+                <div class="w-full bg-navy-mid rounded-full h-3">
+                    <div class="h-3 rounded-full transition-all duration-700 {% if score >= 75 %}bg-green-500{% elif score >= 50 %}bg-gold{% elif score >= 25 %}bg-orange-500{% else %}bg-red-500{% endif %}"
+                         style="width: {{ score }}%"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="mt-4">
+            <canvas id="domainChart" height="200"></canvas>
+        </div>
+    </div>
+
+    <!-- Strengths & Gaps -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        <div class="bg-navy-light border border-navy-mid rounded-xl p-5">
+            <h3 class="text-sm uppercase tracking-wider text-green-400 mb-3">Top Strengths</h3>
+            <ul class="space-y-2">
+                {% for s in latest_attempt.strengths %}
+                <li class="flex items-center gap-2 text-cream/80">
+                    <svg class="w-4 h-4 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    {{ s }}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        <div class="bg-navy-light border border-navy-mid rounded-xl p-5">
+            <h3 class="text-sm uppercase tracking-wider text-red-400 mb-3">Knowledge Gaps</h3>
+            <ul class="space-y-2">
+                {% for g in latest_attempt.gaps %}
+                <li class="flex items-center gap-2 text-cream/80">
+                    <svg class="w-4 h-4 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    {{ g }}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <!-- History -->
+    {% if all_attempts|length > 1 %}
+    <div class="bg-navy-light border border-navy-mid rounded-xl p-6 mb-8">
+        <h2 class="text-lg font-semibold mb-4 text-gold">Score History</h2>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-cream/50 border-b border-navy-mid">
+                        <th class="text-left py-2">#</th>
+                        <th class="text-left py-2">Date</th>
+                        <th class="text-left py-2">Score</th>
+                        <th class="text-left py-2">Level</th>
+                        <th class="text-left py-2">Delta</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for attempt in all_attempts %}
+                    <tr class="border-b border-navy-mid/50">
+                        <td class="py-2 text-cream/60">{{ loop.index }}</td>
+                        <td class="py-2 text-cream/60">{{ attempt.started_at.strftime('%Y-%m-%d') if attempt.started_at else '—' }}</td>
+                        <td class="py-2 font-mono">{{ attempt.overall_score }}%</td>
+                        <td class="py-2 text-gold">{{ attempt.level }}</td>
+                        <td class="py-2">
+                            {% if loop.index > 1 %}
+                                {% set delta = attempt.overall_score - all_attempts[loop.index - 2].overall_score %}
+                                <span class="{% if delta > 0 %}text-green-400{% elif delta < 0 %}text-red-400{% else %}text-cream/40{% endif %}">
+                                    {{ '%+.1f'|format(delta) }}%
+                                </span>
+                            {% else %}—{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Actions -->
+    <div class="flex flex-col sm:flex-row gap-4 justify-center">
+        <a href="/quiz/start" class="bg-blue hover:bg-blue/80 text-white font-semibold py-3 px-8 rounded-lg text-center transition-colors">
+            Re-take Diagnostic
+        </a>
+        {% if not has_curriculum %}
+        <a href="/curriculum/generate" class="bg-gold hover:bg-gold/80 text-navy font-semibold py-3 px-8 rounded-lg text-center transition-colors pulse-gold">
+            Generate Curriculum
+        </a>
+        {% endif %}
+    </div>
+
+    {% elif latest_attempt and latest_attempt.status == 'in_progress' %}
+    <!-- Resume in-progress quiz -->
+    <div class="bg-navy-light border border-navy-mid rounded-xl p-8 text-center">
+        <h2 class="text-xl font-semibold mb-2">Quiz in Progress</h2>
+        <p class="text-cream/60 mb-4">You have an unfinished diagnostic. Pick up where you left off.</p>
+        <div class="flex gap-4 justify-center">
+            <a href="/quiz/{{ latest_attempt.id }}" class="bg-gold hover:bg-gold/80 text-navy font-semibold py-3 px-8 rounded-lg transition-colors">
+                Resume Quiz
+            </a>
+            <a href="/quiz/start" class="bg-navy-mid hover:bg-navy-mid/80 text-cream font-semibold py-3 px-8 rounded-lg transition-colors">
+                Start Fresh
+            </a>
+        </div>
+    </div>
+
+    {% else %}
+    <!-- First visit -->
+    <div class="bg-navy-light border border-gold/30 rounded-xl p-8 text-center max-w-2xl mx-auto">
+        <div class="text-5xl mb-4">&#x1f9e0;</div>
+        <h2 class="text-2xl font-bold mb-3">Diagnose Your AI/ML Knowledge</h2>
+        <p class="text-cream/60 mb-6">
+            20 questions across 5 domains. Adaptive follow-ups for depth verification.
+            Takes ~15 minutes. Results generate a personalized 12-week curriculum.
+        </p>
+        <a href="/quiz/start" class="inline-block bg-gold hover:bg-gold/80 text-navy font-bold py-3 px-10 rounded-lg text-lg transition-colors pulse-gold">
+            Start Diagnostic
+        </a>
+        <div class="mt-6 grid grid-cols-2 md:grid-cols-5 gap-2 text-xs text-cream/40">
+            <span class="bg-navy-mid rounded px-2 py-1">ML Foundations (10%)</span>
+            <span class="bg-navy-mid rounded px-2 py-1">Deep Learning (20%)</span>
+            <span class="bg-navy-mid rounded px-2 py-1">LLMs/RAG (25%)</span>
+            <span class="bg-navy-mid rounded px-2 py-1">Agentic AI (35%)</span>
+            <span class="bg-navy-mid rounded px-2 py-1">Production (10%)</span>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if latest_attempt and latest_attempt.status == 'completed' and latest_attempt.domain_scores %}
+<script>
+    const ctx = document.getElementById('domainChart');
+    if (ctx) {
+        const scores = {{ latest_attempt.domain_scores | tojson }};
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(scores),
+                datasets: [{
+                    label: 'Score %',
+                    data: Object.values(scores),
+                    backgroundColor: Object.values(scores).map(v =>
+                        v >= 75 ? '#22C55E' : v >= 50 ? '#D97706' : v >= 25 ? '#F97316' : '#EF4444'
+                    ),
+                    borderRadius: 6,
+                    barThickness: 40,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: { color: '#94A3B8', callback: v => v + '%' },
+                        grid: { color: '#334155' },
+                    },
+                    x: {
+                        ticks: { color: '#94A3B8', font: { size: 11 } },
+                        grid: { display: false },
+                    }
+                }
+            }
+        });
+    }
+</script>
+{% endif %}
+{% endblock %}

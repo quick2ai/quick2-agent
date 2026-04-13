@@ -1,0 +1,30 @@
+<div class="bg-navy-light border border-gold/40 rounded-xl p-6 fade-in" id="question-card">
+    <!-- Feedback from previous answer -->
+    {% if feedback %}
+    <div class="bg-navy-mid rounded-lg p-3 mb-4 text-sm text-cream/70">
+        <span class="text-gold font-semibold">Claude's feedback:</span> {{ feedback }}
+    </div>
+    {% endif %}
+
+    <!-- Follow-up Question -->
+    <div class="flex items-center gap-2 mb-2">
+        <span class="bg-gold/20 text-gold text-xs font-semibold px-2 py-1 rounded">DEPTH CHECK</span>
+        <span class="text-cream/40 text-xs">You said "Could teach it" — let's verify.</span>
+    </div>
+    <h2 class="text-lg font-semibold mt-3 leading-relaxed">{{ follow_up_question }}</h2>
+
+    <form hx-post="/quiz/{{ attempt_id }}/follow-up" hx-target="#question-card" hx-swap="outerHTML" class="mt-4 space-y-4">
+        <input type="hidden" name="question_index" value="{{ question_index }}">
+
+        <textarea name="follow_up_answer" rows="4"
+                  class="w-full bg-navy-mid border border-navy-mid rounded-lg p-3 text-cream placeholder:text-cream/30 focus:outline-none focus:ring-2 focus:ring-gold/50 resize-none"
+                  placeholder="Answer the follow-up to prove depth (or leave blank to skip)..."></textarea>
+
+        <div class="flex justify-end gap-3">
+            <button type="submit"
+                    class="bg-gold hover:bg-gold/80 text-navy font-semibold py-2.5 px-8 rounded-lg transition-colors">
+                Continue
+            </button>
+        </div>
+    </form>
+</div>
