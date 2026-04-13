@@ -31,7 +31,7 @@ echo "  AI Mastery Diagnostic Engine"
 echo "  Quick2Labs — Levi Webster"
 echo "==================================="
 echo ""
-PORT="${PORT:-5150}"
+PORT="${PORT:-5000}"
 echo "  Starting at http://localhost:$PORT"
 echo ""
 
