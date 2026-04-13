@@ -31,7 +31,8 @@ echo "  AI Mastery Diagnostic Engine"
 echo "  Quick2Labs — Levi Webster"
 echo "==================================="
 echo ""
-echo "  Starting at http://localhost:8000"
+PORT="${PORT:-5150}"
+echo "  Starting at http://localhost:$PORT"
 echo ""
 
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port "$PORT"
