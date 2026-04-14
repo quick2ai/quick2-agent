@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Generating Curriculum{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto text-center fade-in" id="gen-container">
+    <div class="bg-navy-light border border-gold/30 rounded-xl p-10">
+        <div class="animate-spin mx-auto mb-6 w-12 h-12 border-4 border-gold/30 border-t-gold rounded-full"></div>
+        <h1 class="text-2xl font-bold mb-2">Generating Your Curriculum</h1>
+        <p class="text-cream/60 mb-4">
+            Claude Opus is analyzing your quiz results and building a personalized 12-week roadmap
+            tied to your Quick2Labs projects.
+        </p>
+        <p class="text-cream/40 text-sm" id="status-text">This typically takes 15-30 seconds...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Poll for completion
+    const poll = setInterval(async () => {
+        try {
+            const resp = await fetch('/curriculum/status');
+            const data = await resp.json();
+            if (data.ready) {
+                clearInterval(poll);
+                window.location.href = '/curriculum';
+            } else if (data.error) {
+                clearInterval(poll);
+                document.getElementById('status-text').innerHTML =
+                    `<span class="text-red-400">Error: ${data.error}. <a href="/" class="underline">Go back</a></span>`;
+            }
+        } catch (e) {}
+    }, 2000);
+
+    // Kick off generation
+    fetch('/curriculum/generate', { method: 'POST' });
+</script>
+{% endblock %}

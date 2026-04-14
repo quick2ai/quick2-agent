@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Curriculum{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto fade-in">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-3xl font-bold">12-Week Curriculum</h1>
+            <p class="text-cream/60 text-sm mt-1">Generated {{ curriculum.created_at.strftime('%B %d, %Y') if curriculum.created_at else 'recently' }}</p>
+        </div>
+        <a href="/curriculum/{{ curriculum.id }}/download"
+           class="bg-navy-mid hover:bg-navy-mid/80 border border-navy-mid text-cream text-sm font-semibold py-2 px-4 rounded-lg transition-colors">
+            Download .md
+        </a>
+    </div>
+
+    <!-- Week Cards -->
+    <div class="space-y-4 mb-8">
+        {% for week in weeks %}
+        <div class="bg-navy-light border border-navy-mid rounded-xl overflow-hidden">
+            <div class="p-5 cursor-pointer flex items-center justify-between group"
+                 onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-90')">
+                <div class="flex items-center gap-4">
+                    <div class="bg-gold/20 text-gold font-bold text-sm rounded-lg w-12 h-12 flex items-center justify-center flex-shrink-0">
+                        W{{ week.week }}
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-cream group-hover:text-gold transition-colors">{{ week.title }}</h3>
+                        <p class="text-sm text-cream/50">{{ week.objective[:100] }}{% if week.objective|length > 100 %}...{% endif %}</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <a href="/study/{{ curriculum.id }}/{{ week.week }}"
+                       class="bg-blue hover:bg-blue/80 text-white text-xs font-semibold py-1.5 px-4 rounded-lg transition-colors"
+                       onclick="event.stopPropagation()">
+                        Study
+                    </a>
+                    <svg class="w-5 h-5 text-cream/30 transition-transform chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="hidden border-t border-navy-mid p-5">
+                <div class="prose text-sm">{{ week.content_md | safe_md }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Full Curriculum Content -->
+    <details class="bg-navy-light border border-navy-mid rounded-xl">
+        <summary class="p-5 cursor-pointer text-gold font-semibold">View Full Curriculum (Raw)</summary>
+        <div class="border-t border-navy-mid p-5 prose text-sm">
+            {{ curriculum_html | safe }}
+        </div>
+    </details>
+</div>
+{% endblock %}

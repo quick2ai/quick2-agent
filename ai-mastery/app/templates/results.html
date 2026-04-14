@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Results{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto fade-in">
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold mb-2">Diagnostic Complete</h1>
+        <p class="text-cream/60">Here's where you stand, Levi.</p>
+    </div>
+
+    <!-- Level Badge -->
+    <div class="bg-navy-light border border-gold/40 rounded-xl p-8 text-center mb-8">
+        <div class="text-sm uppercase tracking-wider text-cream/50 mb-1">Your Level</div>
+        <div class="text-4xl font-bold text-gold mb-2">{{ attempt.level }}</div>
+        <div class="text-cream/60 text-sm max-w-lg mx-auto">{{ level_description }}</div>
+        <div class="mt-4 text-5xl font-bold text-blue">{{ attempt.overall_score }}%</div>
+        <div class="text-cream/40 text-xs mt-1">Weighted Overall Score</div>
+    </div>
+
+    <!-- Domain Scores -->
+    <div class="bg-navy-light border border-navy-mid rounded-xl p-6 mb-8">
+        <h2 class="text-lg font-semibold mb-4 text-gold">Domain Breakdown</h2>
+        <div class="space-y-3">
+            {% for domain, score in attempt.domain_scores.items() %}
+            <div>
+                <div class="flex justify-between text-sm mb-1">
+                    <span class="text-cream/80">{{ domain }}</span>
+                    <span class="font-mono text-cream/60">{{ score }}%</span>
+                </div>
+                <div class="w-full bg-navy-mid rounded-full h-3">
+                    <div class="h-3 rounded-full transition-all duration-1000 {% if score >= 75 %}bg-green-500{% elif score >= 50 %}bg-gold{% elif score >= 25 %}bg-orange-500{% else %}bg-red-500{% endif %}"
+                         style="width: {{ score }}%"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="mt-6">
+            <canvas id="resultsChart" height="200"></canvas>
+        </div>
+    </div>
+
+    <!-- Strengths & Gaps -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        <div class="bg-navy-light border border-navy-mid rounded-xl p-5">
+            <h3 class="text-sm uppercase tracking-wider text-green-400 mb-3">Top 3 Strengths</h3>
+            <ol class="space-y-2 list-decimal list-inside">
+                {% for s in attempt.strengths %}
+                <li class="text-cream/80">{{ s }}</li>
+                {% endfor %}
+            </ol>
+        </div>
+        <div class="bg-navy-light border border-navy-mid rounded-xl p-5">
+            <h3 class="text-sm uppercase tracking-wider text-red-400 mb-3">Top 3 Gaps</h3>
+            <ol class="space-y-2 list-decimal list-inside">
+                {% for g in attempt.gaps %}
+                <li class="text-cream/80">{{ g }}</li>
+                {% endfor %}
+            </ol>
+        </div>
+    </div>
+
+    <!-- Question Details -->
+    <div class="bg-navy-light border border-navy-mid rounded-xl p-6 mb-8">
+        <h2 class="text-lg font-semibold mb-4 text-gold">Response Details</h2>
+        <div class="space-y-3">
+            {% for resp in attempt.responses %}
+            <div class="border-b border-navy-mid/50 pb-3 last:border-0">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-sm text-cream/50 font-mono">{{ resp.question_id }}</span>
+                    <div class="flex gap-2">
+                        <span class="text-xs px-2 py-0.5 rounded {% if resp.rating == 'A' %}bg-green-500/20 text-green-400{% elif resp.rating == 'B' %}bg-blue/20 text-blue{% elif resp.rating == 'C' %}bg-gold/20 text-gold{% else %}bg-red-500/20 text-red-400{% endif %}">
+                            Self: {{ resp.rating }}
+                        </span>
+                        {% if resp.override_rating and resp.override_rating != resp.rating %}
+                        <span class="text-xs px-2 py-0.5 rounded bg-purple-500/20 text-purple-400">
+                            Claude: {{ resp.override_rating }}
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+                <p class="text-sm text-cream/70">{{ resp.question_text[:100] }}{% if resp.question_text|length > 100 %}...{% endif %}</p>
+                {% if resp.feedback %}
+                <p class="text-xs text-cream/40 mt-1 italic">{{ resp.feedback }}</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Next Steps -->
+    <div class="flex flex-col sm:flex-row gap-4 justify-center">
+        <a href="/curriculum/generate"
+           class="bg-gold hover:bg-gold/80 text-navy font-bold py-3 px-10 rounded-lg text-center transition-colors pulse-gold text-lg">
+            Generate My Curriculum
+        </a>
+        <a href="/"
+           class="bg-navy-mid hover:bg-navy-mid/80 text-cream font-semibold py-3 px-8 rounded-lg text-center transition-colors">
+            Back to Dashboard
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const ctx = document.getElementById('resultsChart');
+    if (ctx) {
+        const scores = {{ attempt.domain_scores | tojson }};
+        new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: Object.keys(scores),
+                datasets: [{
+                    label: 'Score %',
+                    data: Object.values(scores),
+                    backgroundColor: 'rgba(59, 91, 219, 0.2)',
+                    borderColor: '#3B5BDB',
+                    borderWidth: 2,
+                    pointBackgroundColor: '#D97706',
+                    pointBorderColor: '#D97706',
+                    pointRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: { color: '#94A3B8', backdropColor: 'transparent', stepSize: 25 },
+                        grid: { color: '#334155' },
+                        angleLines: { color: '#334155' },
+                        pointLabels: { color: '#F5F0EB', font: { size: 11 } },
+                    }
+                }
+            }
+        });
+    }
+</script>
+{% endblock %}

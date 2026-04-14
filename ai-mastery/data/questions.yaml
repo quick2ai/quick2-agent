@@ -1,0 +1,80 @@
+domains:
+  - name: "ML Foundations"
+    weight: 0.10
+    questions:
+      - id: "ml_1"
+        text: "Explain the bias-variance tradeoff. How would you diagnose whether SAM's classifier is suffering from high bias vs. high variance?"
+        difficulty: 2
+      - id: "ml_2"
+        text: "What is the difference between L1 and L2 regularization? When would you choose one over the other?"
+        difficulty: 1
+      - id: "ml_3"
+        text: "Explain cross-validation and why you'd use stratified k-fold for an imbalanced dataset like SAM's classification targets."
+        difficulty: 2
+      - id: "ml_4"
+        text: "What is gradient descent? Explain the difference between batch, mini-batch, and stochastic gradient descent."
+        difficulty: 1
+
+  - name: "Deep Learning & Transformers"
+    weight: 0.20
+    questions:
+      - id: "dl_1"
+        text: "Explain the self-attention mechanism in transformers. Why is it O(n²) in sequence length, and what are the implications for long documents?"
+        difficulty: 3
+      - id: "dl_2"
+        text: "What is the difference between an encoder-only (BERT), decoder-only (GPT), and encoder-decoder (T5) transformer? Which would you use for SAM's classification task?"
+        difficulty: 2
+      - id: "dl_3"
+        text: "Explain backpropagation through time. Why do RNNs struggle with long-range dependencies, and how do transformers solve this?"
+        difficulty: 2
+      - id: "dl_4"
+        text: "What are positional encodings and why are they necessary? Compare sinusoidal vs. learned vs. RoPE embeddings."
+        difficulty: 3
+
+  - name: "LLMs, RAG & Fine-tuning"
+    weight: 0.25
+    questions:
+      - id: "llm_1"
+        text: "Explain Retrieval-Augmented Generation (RAG). What are the key components and failure modes? How would you implement RAG for JDC Power Systems' CD&E documents?"
+        difficulty: 2
+      - id: "llm_2"
+        text: "Compare full fine-tuning vs. LoRA vs. QLoRA. When would you fine-tune Llama 3.1 70B on DGX Spark vs. using prompt engineering?"
+        difficulty: 3
+      - id: "llm_3"
+        text: "What is prompt engineering? Explain chain-of-thought, few-shot, and system prompting. How do you currently prompt SAM's classifier?"
+        difficulty: 1
+      - id: "llm_4"
+        text: "Explain tokenization (BPE, WordPiece, SentencePiece). Why does tokenization matter for cost, context windows, and multilingual performance?"
+        difficulty: 2
+
+  - name: "Agentic AI"
+    weight: 0.35
+    questions:
+      - id: "agent_1"
+        text: "Define an AI agent technically — what separates it from a workflow or chatbot?"
+        difficulty: 1
+      - id: "agent_2"
+        text: "Explain ReAct vs Plan-and-Execute patterns. When would ADAM use one vs. the other?"
+        difficulty: 2
+      - id: "agent_3"
+        text: "Core components of an agent loop (perception, memory, planning, tool use, reflection). Which does ADAM currently implement?"
+        difficulty: 3
+      - id: "agent_4"
+        text: "Single-agent vs multi-agent vs hierarchical orchestration — where does ADAM → SAM/DOM/ACE/ATLAS fit? What are the tradeoffs of your chosen pattern?"
+        difficulty: 3
+
+  - name: "Production & Frontier"
+    weight: 0.10
+    questions:
+      - id: "prod_1"
+        text: "How do you evaluate an LLM-based system in production? What metrics matter beyond accuracy for the Siemens 900-rep rollout?"
+        difficulty: 2
+      - id: "prod_2"
+        text: "Explain the tradeoffs in your hybrid routing strategy: Claude Opus (30%) + Llama 3.1 70B on DGX Spark (70%). How do you decide which queries go where?"
+        difficulty: 3
+      - id: "prod_3"
+        text: "What is model distillation? How could you use it to reduce inference costs for SAM while maintaining macro-F1 performance?"
+        difficulty: 2
+      - id: "prod_4"
+        text: "Explain AI safety and alignment at the production level. What guardrails should ADAM have to prevent harmful or off-task agent behavior in the Siemens deployment?"
+        difficulty: 2
