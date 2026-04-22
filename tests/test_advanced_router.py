@@ -420,3 +420,25 @@ def test_http_benchmarks_top(client):
     body = r.json()
     assert body["vertical"] == "engineering"
     assert len(body["ranked"]) == 3
+
+
+# ---------------------------------------------------------------------------
+# Static UI
+# ---------------------------------------------------------------------------
+
+def test_http_root_redirects_to_ui(client):
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code in (302, 307)
+    assert "/ui" in r.headers.get("location", "")
+
+
+def test_http_ui_index_served(client):
+    r = client.get("/ui/")
+    assert r.status_code == 200
+    assert "Router Console" in r.text
+
+
+def test_http_ui_assets_served(client):
+    for asset in ("styles.css", "app.js"):
+        r = client.get(f"/ui/{asset}")
+        assert r.status_code == 200, asset

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Quick2 Router Console</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">Q2</span>
+      <div>
+        <div class="brand-title">Router Console</div>
+        <div class="brand-sub">Advanced LLM + agent routing</div>
+      </div>
+    </div>
+    <nav class="tabs">
+      <button class="tab active" data-pane="route">Route</button>
+      <button class="tab" data-pane="leaderboards">Leaderboards</button>
+      <button class="tab" data-pane="models">Models</button>
+      <button class="tab" data-pane="agents">Agents</button>
+      <button class="tab" data-pane="taxonomy">Taxonomy</button>
+      <button class="tab" data-pane="openrouter">OpenRouter</button>
+    </nav>
+    <div class="status">
+      <span id="model-count" class="pill">0 models</span>
+      <span id="api-status" class="pill pill-ok">online</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- ROUTE PANE -->
+    <section id="pane-route" class="pane active">
+      <div class="grid">
+        <div class="card">
+          <div class="card-head">
+            <h2>Prompt</h2>
+            <button id="route-btn" class="primary">Route</button>
+          </div>
+          <textarea id="prompt" placeholder="Describe what you need. e.g. 'Fix the failing auth unit tests and open a PR.'"></textarea>
+
+          <details class="constraints" open>
+            <summary>Constraints</summary>
+            <div class="constraint-grid">
+              <label>Max latency (ms)
+                <input id="c-latency" type="number" placeholder="e.g. 5000" />
+              </label>
+              <label>Max cost (USD)
+                <input id="c-cost" type="number" step="0.001" placeholder="e.g. 0.25" />
+              </label>
+              <label>Min context window
+                <input id="c-ctx" type="number" placeholder="e.g. 200000" />
+              </label>
+              <label>Region
+                <select id="c-region">
+                  <option value="">any</option>
+                  <option value="us">us</option>
+                  <option value="eu">eu</option>
+                  <option value="cn">cn</option>
+                </select>
+              </label>
+              <label class="col-span-2">Vendor allowlist
+                <div class="chipset" id="c-vendors"></div>
+              </label>
+              <label class="col-span-2">Compliance required
+                <div class="chipset" id="c-compliance"></div>
+              </label>
+              <label><input id="c-open" type="checkbox" /> Open weights only</label>
+              <label><input id="c-tools" type="checkbox" /> Force tool support</label>
+              <label><input id="c-explore" type="checkbox" /> Exploration bonus</label>
+            </div>
+          </details>
+        </div>
+
+        <div id="decision" class="card decision empty">
+          <div class="empty-msg">Submit a prompt to see the routing decision.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LEADERBOARDS PANE -->
+    <section id="pane-leaderboards" class="pane">
+      <div class="card">
+        <div class="card-head">
+          <h2>Benchmark leaderboards</h2>
+          <div class="row gap">
+            <select id="lb-vertical"></select>
+            <select id="lb-k">
+              <option>5</option><option>10</option><option>20</option>
+            </select>
+            <button id="lb-go" class="primary">Rank</button>
+          </div>
+        </div>
+        <div id="lb-results"></div>
+        <details class="constraints">
+          <summary>Vertical → benchmark weights</summary>
+          <pre id="lb-weights"></pre>
+        </details>
+      </div>
+    </section>
+
+    <!-- MODELS PANE -->
+    <section id="pane-models" class="pane">
+      <div class="card">
+        <div class="card-head">
+          <h2>Active models</h2>
+          <input id="m-filter" placeholder="Filter id / provider / family…" />
+        </div>
+        <div class="table-wrap">
+          <table id="models-table">
+            <thead>
+              <tr>
+                <th>Model</th><th>Provider</th><th>Family</th><th>Tier</th>
+                <th>Ctx</th><th>$/Mtok in</th><th>$/Mtok out</th>
+                <th>p50 ms</th><th>Modalities</th><th>Compliance</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- AGENTS PANE -->
+    <section id="pane-agents" class="pane">
+      <div class="card">
+        <div class="card-head"><h2>Orchestrated agents</h2></div>
+        <div id="agent-list" class="agent-grid"></div>
+      </div>
+    </section>
+
+    <!-- TAXONOMY PANE -->
+    <section id="pane-taxonomy" class="pane">
+      <div class="card">
+        <div class="card-head">
+          <h2>Intent taxonomy</h2>
+          <input id="t-filter" placeholder="Search intents…" />
+        </div>
+        <div id="taxonomy-groups"></div>
+      </div>
+    </section>
+
+    <!-- OPENROUTER PANE -->
+    <section id="pane-openrouter" class="pane">
+      <div class="card">
+        <div class="card-head"><h2>OpenRouter sync</h2></div>
+        <p class="muted">Pull the full OpenRouter catalog and install every entry into the live router. Models are scored using provider priors blended with any published benchmark data we have.</p>
+        <div class="constraint-grid">
+          <label><input id="or-sample" type="checkbox" /> Use embedded sample (offline)</label>
+          <label><input id="or-fallback" type="checkbox" checked /> Fall back to sample on network error</label>
+          <label class="col-span-2">OpenRouter API key (optional)
+            <input id="or-key" type="password" placeholder="leave empty to use OPENROUTER_API_KEY on server" />
+          </label>
+        </div>
+        <div class="row gap">
+          <button id="or-sync" class="primary">Sync now</button>
+          <span id="or-result" class="muted"></span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>

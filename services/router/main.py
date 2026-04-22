@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import redis
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from pydantic import BaseModel, Field
 
@@ -40,6 +42,15 @@ from services.router.taxonomy import INTENTS, group_by_domain, group_by_vertical
 
 app = FastAPI(title="Router Service", version="2.0.0")
 FastAPIInstrumentor.instrument_app(app)
+
+_STATIC_DIR = Path(__file__).parent / "static"
+if _STATIC_DIR.exists():
+    app.mount("/ui", StaticFiles(directory=str(_STATIC_DIR), html=True), name="ui")
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    return RedirectResponse(url="/ui/")
 
 redis_client = redis.Redis(
     host=os.getenv("REDIS_HOST", "redis"),
