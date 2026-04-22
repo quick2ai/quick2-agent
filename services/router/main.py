@@ -3,17 +3,34 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List, Optional, Tuple
 
 import redis
 from fastapi import FastAPI, HTTPException
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from pydantic import BaseModel, Field
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from libs.common.models import RoutingCandidate, RoutingDecision, TaskSpec
+from services.router.advanced import (
+    Constraints,
+    rank_agents,
+    rank_models,
+    classify_intent,
+    extract_features,
+    infer_skills,
+    infer_tools,
+    route_request,
+)
+from services.router.registries import (
+    AGENT_REGISTRY,
+    CAPABILITY_AXES,
+    MODEL_REGISTRY,
+)
+from services.router.taxonomy import INTENTS, group_by_domain, group_by_vertical
 
-app = FastAPI(title="Router Service", version="1.0.0")
+app = FastAPI(title="Router Service", version="2.0.0")
 FastAPIInstrumentor.instrument_app(app)
 
 redis_client = redis.Redis(
@@ -108,6 +125,185 @@ async def route_task(task: TaskSpec, candidate_skills: List[str] = None):
     )
     
     return decision.model_dump()
+
+
+class AdvancedRouteRequest(BaseModel):
+    text: str = Field(..., description="Natural-language request from the user")
+    context: Dict[str, Any] = Field(default_factory=dict,
+                                    description="Optional context: user_id, modalities, context_tokens, etc.")
+    constraints: Dict[str, Any] = Field(default_factory=dict,
+                                        description="Hard constraints (cost, latency, region, compliance, vendor)")
+    weights: Optional[Dict[str, float]] = Field(
+        default=None, description="Override scoring weights (capability, cost, latency, ...).")
+
+
+def _coerce_constraints(raw: Dict[str, Any]) -> Constraints:
+    def _tuple(value):
+        if value is None:
+            return ()
+        if isinstance(value, (list, tuple, set)):
+            return tuple(value)
+        return (value,)
+
+    return Constraints(
+        max_cost_usd=raw.get("max_cost_usd"),
+        max_latency_ms=raw.get("max_latency_ms"),
+        min_context_window=raw.get("min_context_window"),
+        required_modalities=_tuple(raw.get("required_modalities")),
+        vendor_allowlist=_tuple(raw.get("vendor_allowlist")),
+        vendor_blocklist=_tuple(raw.get("vendor_blocklist")),
+        region=raw.get("region"),
+        compliance_required=_tuple(raw.get("compliance_required")),
+        open_weights_only=bool(raw.get("open_weights_only", False)),
+        force_tools=bool(raw.get("force_tools", False)),
+        explore=bool(raw.get("explore", False)),
+    )
+
+
+@app.post("/v2/route")
+async def route_advanced(req: AdvancedRouteRequest):
+    """End-to-end advanced routing: intent, tools, skills, LLM, agent."""
+    try:
+        decision = route_request(
+            req.text,
+            context=req.context,
+            constraints=_coerce_constraints(req.constraints),
+            weights=req.weights,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    payload = decision.to_dict()
+    try:
+        redis_client.setex(f"route:{decision.request_id}", 3600, json.dumps(payload))
+    except Exception:
+        pass
+    return payload
+
+
+@app.post("/v2/classify")
+async def classify_only(req: AdvancedRouteRequest):
+    """Intent classification + feature extraction without model selection."""
+    features = extract_features(req.text, req.context)
+    intents = classify_intent(features)
+    return {
+        "features": {
+            "language": features.language,
+            "modalities": features.modalities,
+            "pii_hits": features.pii_hits,
+            "regulated": features.regulated,
+            "estimated_reasoning": features.estimated_reasoning,
+            "estimated_context_tokens": features.estimated_context_tokens,
+        },
+        "top_intents": [m.to_dict() for m in intents],
+        "tools": infer_tools(features, intents),
+        "skills": infer_skills(intents),
+    }
+
+
+@app.post("/v2/models/rank")
+async def rank_models_endpoint(req: AdvancedRouteRequest):
+    """Rank candidate LLMs for the given request without agent selection."""
+    features = extract_features(req.text, req.context)
+    intents = classify_intent(features)
+    ranked = rank_models(
+        features, intents, _coerce_constraints(req.constraints),
+        weights=req.weights,
+    )
+    if not ranked:
+        raise HTTPException(
+            status_code=422,
+            detail="No model satisfies the provided constraints",
+        )
+    return {"ranked": [s.to_dict() for s in ranked]}
+
+
+@app.post("/v2/agents/rank")
+async def rank_agents_endpoint(req: AdvancedRouteRequest):
+    """Rank candidate agents (orchestrated runners) for the request."""
+    features = extract_features(req.text, req.context)
+    intents = classify_intent(features)
+    tools = infer_tools(features, intents)
+    ranked = rank_agents(features, intents, tools, _coerce_constraints(req.constraints))
+    return {"ranked": [s.to_dict() for s in ranked]}
+
+
+@app.get("/v2/models")
+async def list_models():
+    return {
+        "count": len(MODEL_REGISTRY),
+        "capability_axes": list(CAPABILITY_AXES),
+        "models": [
+            {
+                "model_id": m.model_id,
+                "provider": m.provider,
+                "family": m.family,
+                "tier": m.tier,
+                "capabilities": m.capabilities,
+                "cost_in_per_mtok": m.cost_in_per_mtok,
+                "cost_out_per_mtok": m.cost_out_per_mtok,
+                "latency_p50_ms": m.latency_p50_ms,
+                "context_window": m.context_window,
+                "max_output": m.max_output,
+                "modalities": list(m.modalities),
+                "supports_tools": m.supports_tools,
+                "compliance": list(m.compliance),
+                "region_hosted": list(m.region_hosted),
+                "open_weights": m.open_weights,
+                "notes": m.notes,
+            }
+            for m in MODEL_REGISTRY
+        ],
+    }
+
+
+@app.get("/v2/agents")
+async def list_agents():
+    return {
+        "count": len(AGENT_REGISTRY),
+        "agents": [
+            {
+                "agent_id": a.agent_id,
+                "runtime": a.runtime,
+                "description": a.description,
+                "strengths": list(a.strengths),
+                "default_model": a.default_model,
+                "fallback_models": list(a.fallback_models),
+                "supported_tools": list(a.supported_tools),
+                "autonomy_default": a.autonomy_default,
+                "compliance": list(a.compliance),
+                "max_parallel": a.max_parallel,
+            }
+            for a in AGENT_REGISTRY
+        ],
+    }
+
+
+@app.get("/v2/taxonomy")
+async def list_taxonomy():
+    by_dom = {k: [i.intent_id for i in v] for k, v in group_by_domain().items()}
+    by_ver = {k: [i.intent_id for i in v] for k, v in group_by_vertical().items()}
+    return {
+        "count": len(INTENTS),
+        "by_domain": by_dom,
+        "by_vertical": by_ver,
+        "intents": [
+            {
+                "intent_id": i.intent_id,
+                "domain": i.domain,
+                "vertical": i.vertical,
+                "label": i.label,
+                "modalities": list(i.modalities),
+                "tools": list(i.tools),
+                "skills": list(i.skills),
+                "complexity": i.complexity,
+                "reasoning_depth": i.reasoning_depth,
+                "regulated": i.regulated,
+                "agentic": i.agentic,
+                "long_context": i.long_context,
+            }
+            for i in INTENTS
+        ],
+    }
 
 
 if __name__ == "__main__":
