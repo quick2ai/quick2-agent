@@ -17,6 +17,20 @@ from services.router.advanced import (
     rank_models,
     route_request,
 )
+from services.router.benchmarks import (
+    BENCHMARKS,
+    MODEL_BENCH_SCORES,
+    VERTICAL_BENCH_WEIGHTS,
+    benchmark_score_for,
+    top_models_for,
+)
+from services.router.openrouter import (
+    _as_model_card,
+    _infer_family,
+    _infer_tier,
+    install_into_registry,
+    sync_openrouter,
+)
 from services.router.registries import AGENT_REGISTRY, MODEL_REGISTRY
 from services.router.taxonomy import INTENTS
 
@@ -254,3 +268,155 @@ def test_http_list_taxonomy(client):
     r = client.get("/v2/taxonomy")
     assert r.status_code == 200
     assert r.json()["count"] == len(INTENTS)
+
+
+# ---------------------------------------------------------------------------
+# Benchmark catalog
+# ---------------------------------------------------------------------------
+
+def test_benchmark_catalog_has_key_families():
+    families = {b.family for b in BENCHMARKS}
+    for required in ("coding", "math", "reasoning", "agentic",
+                     "long_context", "vision", "audio",
+                     "instruction", "factuality", "creative"):
+        assert required in families
+
+
+def test_benchmark_score_exact_id_resolves():
+    result = benchmark_score_for("claude-opus-4-7", "claude-4", "engineering")
+    assert result is not None
+    score, contribs = result
+    assert 0.0 < score <= 1.0
+    assert "swe_bench_verified" in contribs
+
+
+def test_benchmark_score_openrouter_slug_normalises():
+    """OpenRouter slugs like anthropic/claude-haiku-4.5 should find the curated id."""
+    exact = benchmark_score_for("claude-haiku-4-5", "claude-4", "engineering")
+    slug = benchmark_score_for("openrouter:anthropic/claude-haiku-4.5",
+                               "claude-4", "engineering")
+    assert exact is not None and slug is not None
+    assert abs(exact[0] - slug[0]) < 1e-6
+
+
+def test_benchmark_score_family_fallback():
+    # Made-up model id, but a known family
+    result = benchmark_score_for("nonexistent-model", "claude-4", "engineering")
+    assert result is not None
+
+
+def test_benchmark_top_for_coding():
+    top = top_models_for("engineering", k=3)
+    assert len(top) == 3
+    # SWE-Bench leader should be near the top
+    ids = {row["model_id"] for row in top}
+    assert ids & {"claude-opus-4-7", "o4", "gpt-5", "claude-sonnet-4-6"}
+
+
+def test_benchmark_top_for_math():
+    top = top_models_for("finance", k=3)
+    assert top[0]["model_id"] in {"o4", "gpt-5", "deepseek-r2", "claude-opus-4-7"}
+
+
+def test_ranking_blends_benchmark_score():
+    feats = extract_features("Fix the failing auth unit test and open a PR")
+    intents = classify_intent(feats)
+    ranked = rank_models(feats, intents, Constraints())
+    # The primary must carry a benchmark score for a well-known vertical.
+    assert ranked[0].benchmark_score is not None
+    assert ranked[0].benchmark_contributions
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter integration
+# ---------------------------------------------------------------------------
+
+def test_openrouter_infer_tier():
+    assert _infer_tier("Claude Opus 4.1", 75.0, 4000) == "frontier"
+    assert _infer_tier("GPT-5 Mini", 2.4, 600) == "fast"
+    assert _infer_tier("Llama 4 70B", 0.9, 900) == "open"
+
+
+def test_openrouter_infer_family():
+    assert _infer_family("anthropic/claude-opus-4.1") == "claude-4"
+    assert _infer_family("openai/gpt-5") == "gpt-5"
+    assert _infer_family("openai/o4") == "o-series"
+    assert _infer_family("google/gemini-2.5-pro") == "gemini-2.5"
+    assert _infer_family("deepseek/deepseek-r2") == "deepseek-r2"
+
+
+def test_openrouter_entry_to_model_card():
+    card = _as_model_card({
+        "id": "anthropic/claude-opus-4.1",
+        "name": "Claude Opus 4.1",
+        "context_length": 1_000_000,
+        "pricing": {"prompt": "0.000015", "completion": "0.000075"},
+        "architecture": {"modality": "text+image"},
+        "top_provider": {"max_completion_tokens": 32000, "latency_ms": 4200},
+    })
+    assert card is not None
+    assert card.model_id == "openrouter:anthropic/claude-opus-4.1"
+    assert card.provider == "anthropic"
+    assert card.tier == "frontier"
+    assert card.context_window == 1_000_000
+    assert card.cost_in_per_mtok == pytest.approx(15.0)
+    assert card.cost_out_per_mtok == pytest.approx(75.0)
+    assert "vision" in card.modalities
+
+
+def test_openrouter_sync_sample_and_install():
+    cards = sync_openrouter(use_sample=True)
+    assert len(cards) >= 10
+    # Re-syncing and re-installing should be idempotent.
+    install_into_registry(cards)
+    first = len([m for m in _adv_module_active()])
+    install_into_registry(cards)
+    second = len([m for m in _adv_module_active()])
+    assert first == second
+
+
+def _adv_module_active():
+    from services.router.advanced import active_models
+    return active_models()
+
+
+def test_openrouter_models_appear_in_ranking():
+    install_into_registry(sync_openrouter(use_sample=True))
+    feats = extract_features("Write a long-context summary of this 500k-token corpus")
+    intents = classify_intent(feats)
+    ranked = rank_models(feats, intents, Constraints(min_context_window=500_000))
+    assert ranked
+    ids = [r.model.model_id for r in ranked]
+    assert any(i.startswith("openrouter:") for i in ids), ids
+
+
+def test_openrouter_fallback_to_sample_on_network_failure(monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("network down")
+    monkeypatch.setattr("services.router.openrouter.fetch_openrouter_models", boom)
+    cards = sync_openrouter(fallback_to_sample=True)
+    assert cards  # sample returned
+
+
+def test_http_openrouter_sync(client):
+    r = client.post("/v2/openrouter/sync", json={"use_sample": True})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["fetched"] >= 10
+    assert body["active_total"] >= len(MODEL_REGISTRY)
+
+
+def test_http_benchmarks(client):
+    r = client.get("/v2/benchmarks")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["benchmarks"]) == len(BENCHMARKS)
+    assert "engineering" in body["vertical_weights"]
+
+
+def test_http_benchmarks_top(client):
+    r = client.get("/v2/benchmarks/top", params={"vertical": "engineering", "k": 3})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["vertical"] == "engineering"
+    assert len(body["ranked"]) == 3

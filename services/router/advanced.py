@@ -36,6 +36,18 @@ from .registries import (
     models_by_id,
 )
 from .taxonomy import INTENTS, Intent, by_id as intents_by_id
+from .benchmarks import benchmark_score_for
+
+
+# Mutable extension list, written to by openrouter.install_into_registry().
+_EXTRA_MODELS: List[ModelCard] = []
+
+
+def active_models() -> Tuple[ModelCard, ...]:
+    """Return the curated registry plus any synced OpenRouter cards."""
+    if not _EXTRA_MODELS:
+        return tuple(MODEL_REGISTRY)
+    return tuple(MODEL_REGISTRY) + tuple(_EXTRA_MODELS)
 
 
 # ---------------------------------------------------------------------------
@@ -328,6 +340,8 @@ class ModelScore:
     projected_cost: float
     projected_latency_ms: float
     reasons: List[str]
+    benchmark_score: Optional[float] = None
+    benchmark_contributions: Dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -337,6 +351,9 @@ class ModelScore:
             "sub_scores": {k: round(v, 4) for k, v in self.sub_scores.items()},
             "projected_cost_usd": round(self.projected_cost, 6),
             "projected_latency_ms": round(self.projected_latency_ms, 1),
+            "benchmark_score": (None if self.benchmark_score is None
+                                else round(self.benchmark_score, 4)),
+            "benchmark_contributions": self.benchmark_contributions,
             "reasons": self.reasons,
         }
 
@@ -371,7 +388,9 @@ _DOMAIN_AXES: Dict[str, Dict[str, float]] = {
 
 
 def _capability_fit(model: ModelCard, intent: Intent,
-                    features: Features) -> float:
+                    features: Features,
+                    ) -> Tuple[float, Optional[float], Dict[str, float]]:
+    """Return (blended fit, benchmark score or None, benchmark contributions)."""
     weights = _DOMAIN_AXES.get(intent.vertical, {"reasoning": 0.6, "instruction": 0.6})
     w_sum = sum(weights.values()) or 1.0
     base = sum(model.capabilities[a] * w for a, w in weights.items()) / w_sum
@@ -388,7 +407,15 @@ def _capability_fit(model: ModelCard, intent: Intent,
             base = 0.85 * base + 0.15 * model.capabilities["multimodal_vision"]
         elif mod == "audio":
             base = 0.85 * base + 0.15 * model.capabilities["multimodal_audio"]
-    return float(max(0.0, min(1.0, base)))
+
+    bench_score: Optional[float] = None
+    contribs: Dict[str, float] = {}
+    lookup = benchmark_score_for(model.model_id, model.family, intent.vertical)
+    if lookup is not None:
+        bench_score, contribs = lookup
+        base = 0.45 * base + 0.55 * bench_score
+
+    return float(max(0.0, min(1.0, base))), bench_score, contribs
 
 
 def _cost_fit(model: ModelCard, features: Features) -> Tuple[float, float]:
@@ -473,12 +500,12 @@ def rank_models(features: Features,
         w.update(weights)
 
     ranked: List[ModelScore] = []
-    for model in MODEL_REGISTRY:
+    for model in active_models():
         ok, fail_reasons = _passes_constraints(model, constraints, features)
         if not ok:
             continue
 
-        cap = _capability_fit(model, top_intent, features)
+        cap, bench_score, contribs = _capability_fit(model, top_intent, features)
         cost_fit, cost = _cost_fit(model, features)
         lat = _latency_fit(model, constraints)
         ctx = _context_fit(model, features)
@@ -493,6 +520,8 @@ def rank_models(features: Features,
         }
         total = sum(w[k] * v for k, v in sub.items() if k in w)
         reasons = [f"{k}={v:.2f}" for k, v in sub.items() if v < 0.5]
+        if bench_score is not None:
+            reasons.insert(0, f"bench={bench_score:.2f}")
         if not reasons:
             reasons = ["balanced fit"]
         ranked.append(ModelScore(
@@ -500,6 +529,8 @@ def rank_models(features: Features,
             projected_cost=cost,
             projected_latency_ms=model.latency_p50_ms,
             reasons=reasons,
+            benchmark_score=bench_score,
+            benchmark_contributions=contribs,
         ))
     ranked.sort(key=lambda s: s.score, reverse=True)
     return ranked

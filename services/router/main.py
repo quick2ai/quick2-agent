@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from libs.common.models import RoutingCandidate, RoutingDecision, TaskSpec
 from services.router.advanced import (
     Constraints,
+    active_models,
     rank_agents,
     rank_models,
     classify_intent,
@@ -23,6 +24,13 @@ from services.router.advanced import (
     infer_tools,
     route_request,
 )
+from services.router.benchmarks import (
+    BENCHMARKS,
+    MODEL_BENCH_SCORES,
+    VERTICAL_BENCH_WEIGHTS,
+    top_models_for,
+)
+from services.router.openrouter import install_into_registry, sync_openrouter
 from services.router.registries import (
     AGENT_REGISTRY,
     CAPABILITY_AXES,
@@ -229,8 +237,11 @@ async def rank_agents_endpoint(req: AdvancedRouteRequest):
 
 @app.get("/v2/models")
 async def list_models():
+    models = active_models()
     return {
-        "count": len(MODEL_REGISTRY),
+        "count": len(models),
+        "curated_count": len(MODEL_REGISTRY),
+        "openrouter_count": len(models) - len(MODEL_REGISTRY),
         "capability_axes": list(CAPABILITY_AXES),
         "models": [
             {
@@ -251,9 +262,81 @@ async def list_models():
                 "open_weights": m.open_weights,
                 "notes": m.notes,
             }
-            for m in MODEL_REGISTRY
+            for m in models
         ],
     }
+
+
+class OpenRouterSyncRequest(BaseModel):
+    use_sample: bool = Field(
+        default=False,
+        description="Use embedded sample catalog instead of hitting the network")
+    fallback_to_sample: bool = Field(
+        default=True,
+        description="Fall back to the sample catalog if the fetch fails")
+    api_key: Optional[str] = Field(
+        default=None,
+        description="Optional OpenRouter API key (else OPENROUTER_API_KEY env)")
+
+
+@app.post("/v2/openrouter/sync")
+async def openrouter_sync(req: OpenRouterSyncRequest):
+    """Pull the OpenRouter catalog and install its models into the router.
+
+    Accessible via POST so refreshes are explicit; no network call is
+    made until this endpoint is invoked.
+    """
+    try:
+        cards = sync_openrouter(
+            use_sample=req.use_sample,
+            fallback_to_sample=req.fallback_to_sample,
+            api_key=req.api_key,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502,
+                            detail=f"OpenRouter fetch failed: {exc}") from exc
+    added = install_into_registry(cards)
+    try:
+        redis_client.setex("openrouter:last_sync",
+                           3600,
+                           json.dumps({"fetched": len(cards), "added": added,
+                                       "at": datetime.utcnow().isoformat()}))
+    except Exception:
+        pass
+    return {
+        "fetched": len(cards),
+        "added": added,
+        "active_total": len(active_models()),
+    }
+
+
+@app.get("/v2/benchmarks")
+async def list_benchmarks():
+    return {
+        "benchmarks": [
+            {
+                "bench_id": b.bench_id,
+                "name": b.name,
+                "family": b.family,
+                "description": b.description,
+                "source": b.source,
+                "higher_is_better": b.higher_is_better,
+            }
+            for b in BENCHMARKS
+        ],
+        "vertical_weights": VERTICAL_BENCH_WEIGHTS,
+        "model_scores": MODEL_BENCH_SCORES,
+    }
+
+
+@app.get("/v2/benchmarks/top")
+async def benchmarks_top(vertical: str, k: int = 5):
+    """Return the top-k models by vertical-weighted benchmark score."""
+    ranked = top_models_for(vertical, k=k)
+    if not ranked:
+        raise HTTPException(status_code=404,
+                            detail=f"No benchmark data for vertical '{vertical}'")
+    return {"vertical": vertical, "ranked": ranked}
 
 
 @app.get("/v2/agents")
