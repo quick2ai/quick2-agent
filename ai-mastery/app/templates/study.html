@@ -69,6 +69,29 @@
             </button>
             <div id="mini-quiz-content" class="bg-navy-light border border-navy-mid rounded-xl p-4 text-sm prose hidden-if-empty"></div>
 
+            <!-- Curated Resources -->
+            {% if resources %}
+            <div class="bg-navy-light border border-navy-mid rounded-xl p-4">
+                <h3 class="text-sm uppercase tracking-wider text-gold mb-3">Resources</h3>
+                <div class="space-y-2">
+                    {% for r in resources %}
+                    <a href="{{ r.url }}" target="_blank" rel="noopener"
+                       class="block p-2 rounded-lg bg-navy-mid/50 hover:bg-navy-mid transition-colors group">
+                        <div class="flex items-start gap-2">
+                            <span class="text-xs mt-0.5 flex-shrink-0">
+                                {% if r.type == 'video' %}🎥{% elif r.type == 'paper' %}📄{% elif r.type == 'course' %}🎓{% elif r.type == 'docs' %}📚{% else %}📝{% endif %}
+                            </span>
+                            <div>
+                                <div class="text-xs font-medium text-cream/90 group-hover:text-gold transition-colors">{{ r.title }}</div>
+                                <div class="text-xs text-cream/40 mt-0.5">{{ r.creator }}</div>
+                            </div>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
             <!-- Week Content -->
             {% if week_content %}
             <div class="bg-navy-light border border-navy-mid rounded-xl p-4">

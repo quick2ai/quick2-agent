@@ -475,6 +475,9 @@ async def study_page(
     if chat_session:
         messages = chat_session.messages or []
 
+    from .resources import get_resources_for_week
+    week_resources = get_resources_for_week(week_number)
+
     return templates.TemplateResponse("study.html", {
         "request": request,
         "curriculum_id": curriculum_id,
@@ -483,6 +486,7 @@ async def study_page(
         "week_objective": week_objective,
         "week_content": week_content,
         "messages": messages,
+        "resources": week_resources,
     })
 
 
@@ -536,7 +540,7 @@ async def study_chat(
 
     async def stream_response():
         full_response = ""
-        async for chunk in claude_client.chat_stream(claude_messages, week_context):
+        async for chunk in claude_client.chat_stream(claude_messages, week_context, week_number):
             full_response += chunk
             yield f"data: {chunk}\n\n"
         yield "data: [DONE]\n\n"
