@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Quick2 Purchase Router{% endblock %}</title>
+    <script src="/static/tailwind.js"></script>
+    <script src="/static/htmx.min.js"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' };
+    </script>
+    <style>
+        body { background: #0b1020; }
+        .card { background: #131a2e; border: 1px solid #232d4a; }
+        .glow { box-shadow: 0 0 24px rgba(80, 140, 255, 0.15); }
+    </style>
+</head>
+<body class="text-slate-200 min-h-screen">
+    <nav class="border-b border-slate-800 bg-[#0e1428]">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-6">
+            <a href="/" class="font-bold text-lg text-white">⚡ Purchase<span class="text-blue-400">Router</span></a>
+            <div class="flex gap-4 text-sm">
+                <a href="/" class="hover:text-blue-400">Dashboard</a>
+                <a href="/tap" class="hover:text-blue-400">Tap to Pay</a>
+                <a href="/accounts" class="hover:text-blue-400">Accounts</a>
+                <a href="/insights" class="hover:text-blue-400">Insights</a>
+            </div>
+            <div class="ml-auto text-xs text-slate-500">Quick2Labs · smart purchase routing</div>
+        </div>
+    </nav>
+    <main class="max-w-6xl mx-auto px-4 py-8">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
