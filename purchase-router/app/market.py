@@ -143,10 +143,14 @@ HIGH_YIELD_OFFERS = [
 
 
 def best_owned_rate(accounts: list, category: str) -> tuple[float, str]:
-    """Best earn rate the wallet already has for a category (credit cards only)."""
+    """Best earn rate the wallet already has for a category.
+
+    Revolving cards are excluded — the router won't put new spend on them,
+    so their earn rates aren't a usable baseline when comparing market offers.
+    """
     best, name = 0.0, ""
     for a in accounts:
-        if a.kind != "credit" or not a.active:
+        if a.kind != "credit" or not a.active or a.carries_balance:
             continue
         rate = a.base_rate or 0.0
         for rule in (a.reward_rules or []):
