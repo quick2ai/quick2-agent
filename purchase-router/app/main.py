@@ -122,7 +122,10 @@ async def _settle_charge(db: AsyncSession, accounts: list[Account],
     if account.kind == "credit":
         account.current_balance += req.amount
         if (account.bonus_spend_required or 0) > (account.bonus_spend_progress or 0):
-            account.bonus_spend_progress = (account.bonus_spend_progress or 0) + req.amount
+            account.bonus_spend_progress = min(
+                account.bonus_spend_required,
+                (account.bonus_spend_progress or 0) + req.amount,
+            )
     else:
         account.current_balance -= req.amount
     db.add(Transaction(

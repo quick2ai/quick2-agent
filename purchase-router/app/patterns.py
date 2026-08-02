@@ -45,14 +45,14 @@ def recurring_merchants(transactions: list, min_months: int = 2) -> list[dict]:
     for merchant, txns in by_merchant.items():
         months = {(t.date.year, t.date.month) for t in txns}
         if len(months) >= min_months:
-            avg = sum(t.amount for t in txns) / len(txns)
+            total = sum(t.amount for t in txns)
             out.append({
                 "merchant": merchant,
                 "category": txns[0].category,
                 "months_seen": len(months),
                 "charges": len(txns),
-                "avg_amount": round(avg, 2),
-                "annualized": round(avg * 12, 2) if len(months) >= 2 else round(sum(t.amount for t in txns), 2),
+                "avg_amount": round(total / len(txns), 2),
+                "annualized": round(total / len(months) * 12, 2),
             })
     out.sort(key=lambda m: m["annualized"], reverse=True)
     return out
