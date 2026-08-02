@@ -45,6 +45,28 @@ def test_next_occurrence_rolls_over():
     assert next_occurrence(datetime.date(2026, 8, 20), 15) == datetime.date(2026, 9, 15)
 
 
+def test_next_occurrence_same_day_is_today():
+    assert next_occurrence(datetime.date(2026, 8, 15), 15) == datetime.date(2026, 8, 15)
+
+
+def test_next_occurrence_exclusive_rolls_same_day():
+    assert next_occurrence(datetime.date(2026, 8, 15), 15,
+                           inclusive=False) == datetime.date(2026, 9, 15)
+
+
+def test_purchase_on_close_day_posts_to_todays_statement():
+    # purchase Aug 15, closes Aug 15, due Sep 12 -> 28 days of float
+    assert days_until_due(datetime.date(2026, 8, 15), 15, 12) == 28
+
+
+def test_purchase_on_close_day_gets_full_utilization_penalty():
+    # closing today = no time to pay down before it reports: no discount
+    card = make_card(current_balance=2800, credit_limit=10000,
+                     statement_close_day=TODAY.day)
+    s = score_account(card, Purchase(400, date=TODAY), cash_apy=0.0)
+    assert s.utilization_penalty == pytest.approx(12.0)  # full 30%-threshold cost
+
+
 def test_next_occurrence_clamps_short_month():
     assert next_occurrence(datetime.date(2026, 2, 1), 31) == datetime.date(2026, 2, 28)
 

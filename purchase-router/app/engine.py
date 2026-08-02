@@ -154,19 +154,25 @@ def _clamp_day(year: int, month: int, day: int) -> datetime.date:
     return datetime.date(year, month, min(day, last))
 
 
-def next_occurrence(from_date: datetime.date, day_of_month: int) -> datetime.date:
-    """Next date (strictly after from_date) that falls on day_of_month."""
+def next_occurrence(from_date: datetime.date, day_of_month: int,
+                    inclusive: bool = True) -> datetime.date:
+    """Next date on day_of_month. Inclusive by default: a statement that
+    closes (or payment due) TODAY is today's event, not next month's."""
     candidate = _clamp_day(from_date.year, from_date.month, day_of_month)
-    if candidate > from_date:
+    if candidate > from_date or (inclusive and candidate == from_date):
         return candidate
     year, month = (from_date.year + 1, 1) if from_date.month == 12 else (from_date.year, from_date.month + 1)
     return _clamp_day(year, month, day_of_month)
 
 
 def days_until_due(purchase_date: datetime.date, close_day: int, due_day: int) -> int:
-    """Days of float: purchase -> statement close -> the due date after it."""
+    """Days of float: purchase -> statement close -> the due date after it.
+
+    A purchase on the close day posts to today's statement; the due date is
+    always strictly after the close.
+    """
     close = next_occurrence(purchase_date, close_day)
-    due = next_occurrence(close, due_day)
+    due = next_occurrence(close, due_day, inclusive=False)
     return (due - purchase_date).days
 
 
