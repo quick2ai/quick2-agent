@@ -61,24 +61,31 @@ def recurring_merchants(transactions: list, min_months: int = 2) -> list[dict]:
 def missed_rewards(transactions: list, accounts: list) -> dict:
     """Re-run history through the router: what would optimal routing have earned?
 
-    Uses today's account snapshots (balances/caps as they are now) — an
-    approximation, but a good directional estimate of leakage.
+    Replays chronologically with fresh cap counters: each purchase's spend is
+    credited against the winning card's category caps, so boosted rates
+    exhaust during the replay exactly as they would have in reality.
     """
     snapshots = [eng.snapshot_from_orm(a) for a in accounts]
+    for snap in snapshots:
+        snap.category_spend = {}  # caps accumulate during the replay
+    credit_snaps = [s for s in snapshots if s.kind == "credit" and s.active]
     total_actual, total_optimal = 0.0, 0.0
     worst = defaultdict(lambda: {"count": 0, "missed": 0.0})
     months = set()
 
-    for t in transactions:
+    for t in sorted(transactions, key=lambda t: t.date):
         months.add((t.date.year, t.date.month))
         purchase = eng.Purchase(amount=t.amount, category=t.category,
                                 merchant=t.merchant, date=t.date)
-        best_rewards = 0.0
-        for snap in snapshots:
-            if snap.kind != "credit" or not snap.active:
-                continue
+        best_rewards, best_snap = 0.0, None
+        for snap in credit_snaps:
             value, _ = eng.rewards_for(snap, purchase)
-            best_rewards = max(best_rewards, value)
+            if value > best_rewards:
+                best_rewards, best_snap = value, snap
+        if best_snap is not None:
+            for period in ("month", "quarter", "year"):
+                key = (t.category, eng.period_key(t.date, period))
+                best_snap.category_spend[key] = best_snap.category_spend.get(key, 0.0) + t.amount
         total_actual += t.reward_earned or 0.0
         total_optimal += best_rewards
         gap = best_rewards - (t.reward_earned or 0.0)

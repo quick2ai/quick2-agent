@@ -149,6 +149,22 @@ def test_post_close_purchase_discounts_utilization_penalty():
     assert s_closed.utilization_penalty < s_soon.utilization_penalty
 
 
+def test_utilization_discount_scales_smoothly_no_cliff():
+    # Penalty must decrease monotonically as the close moves further out —
+    # no threshold cliff between adjacent days.
+    penalties = []
+    for days_out in range(1, 28):
+        close_date = TODAY + datetime.timedelta(days=days_out)
+        card = make_card(current_balance=2800, credit_limit=10000,
+                         statement_close_day=close_date.day)
+        s = score_account(card, Purchase(400, date=TODAY), cash_apy=0.0)
+        penalties.append((days_out, s.utilization_penalty))
+    values = [p for _, p in penalties]
+    assert all(a >= b for a, b in zip(values, values[1:]))
+    drops = [a - b for a, b in zip(values, values[1:])]
+    assert max(drops) < max(values) * 0.15  # largest day-over-day step is small
+
+
 def test_insufficient_credit_is_ineligible():
     card = make_card(current_balance=9900, credit_limit=10000)
     s = score_account(card, Purchase(500, date=TODAY), cash_apy=0.0)

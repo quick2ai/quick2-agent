@@ -39,10 +39,12 @@ UTILIZATION_PENALTIES = [
 AGGREGATE_UTILIZATION_PENALTY = 20.0
 AGGREGATE_UTILIZATION_THRESHOLD = 0.30
 
-# If the purchase posts AFTER this cycle's close, it won't appear on the next
-# reported statement — utilization penalty is discounted by this factor
-# (you have a full cycle + grace to pay it before it ever reports).
+# A balance only reports to the bureaus if it's still there at statement
+# close. The further away the close, the more room to pay the purchase down
+# before it ever reports — the penalty scales smoothly from full (closes
+# today) to this floor (statement just closed, a full cycle away).
 POST_CLOSE_UTILIZATION_DISCOUNT = 0.25
+STATEMENT_CYCLE_DAYS = 28.0
 
 # Assumed number of days a revolving balance carries before payoff.
 ASSUMED_CARRY_DAYS = 30
@@ -241,14 +243,18 @@ def utilization_penalty_for(account: AccountSnapshot, purchase: Purchase,
             penalty += AGGREGATE_UTILIZATION_PENALTY
             reasons.append("pushes overall utilization across all cards past 30%")
 
-    # Purchases that post after this cycle's close don't hit the next report.
-    if account.statement_close_day is not None:
+    # Scale by time to act: more days before the close = more room to pay
+    # the purchase down before it reports. Continuous — no threshold cliff.
+    if account.statement_close_day is not None and penalty > 0:
         close = next_occurrence(purchase.date, account.statement_close_day)
-        if (close - purchase.date).days >= 25:
-            # statement just closed — a full cycle before this ever reports
-            penalty *= POST_CLOSE_UTILIZATION_DISCOUNT
-            if reasons:
-                reasons.append("statement just closed — balance won't report for ~a month")
+        days_to_close = (close - purchase.date).days
+        urgency = max(0.0, 1.0 - days_to_close / STATEMENT_CYCLE_DAYS)
+        penalty *= POST_CLOSE_UTILIZATION_DISCOUNT + (1.0 - POST_CLOSE_UTILIZATION_DISCOUNT) * urgency
+        if days_to_close >= 21:
+            reasons.append(
+                f"{days_to_close} days until this card's statement closes — "
+                f"time to pay it down before the balance reports"
+            )
     return penalty, reasons
 
 
