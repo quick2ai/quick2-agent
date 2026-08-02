@@ -189,8 +189,12 @@ def rewards_for(account: AccountSnapshot, purchase: Purchase) -> tuple[float, st
             continue
         rate = rule.rate
         if rule.cap is not None:
-            key = (rule.category, period_key(purchase.date, rule.cap_period))
-            spent = account.category_spend.get(key, 0.0)
+            pk = period_key(purchase.date, rule.cap_period)
+            if rule.category == "all":
+                # an "all" cap covers spend in every category this period
+                spent = sum(v for (_, p), v in account.category_spend.items() if p == pk)
+            else:
+                spent = account.category_spend.get((rule.category, pk), 0.0)
             if spent >= rule.cap:
                 continue  # cap exhausted — rule no longer applies
             if spent + purchase.amount > rule.cap:

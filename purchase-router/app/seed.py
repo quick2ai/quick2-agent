@@ -9,6 +9,7 @@ import random
 
 from sqlalchemy import select, func
 
+from . import engine as eng
 from .models import Account, Transaction, async_session
 
 TODAY = datetime.date.today
@@ -172,7 +173,12 @@ _MONTHLY_MIX = {
 
 def _demo_transactions(accounts: list[Account]) -> list[Transaction]:
     """~4 months of history, deliberately routed sub-optimally at times so
-    the pattern-recognition insights have real leakage to find."""
+    the pattern-recognition insights have real leakage to find.
+
+    reward_earned is computed through the engine's rewards_for with live cap
+    tracking over a chronological replay, so seeded history is consistent
+    with how the insights replay values the same purchases.
+    """
     rng = random.Random(42)
     today = TODAY()
     cards = [a for a in accounts if a.kind == "credit"]
@@ -189,7 +195,8 @@ def _demo_transactions(accounts: list[Account]) -> list[Transaction]:
                 best, best_rate = c, rate
         return best
 
-    txns = []
+    # 1) Generate raw purchases (date, category, amount, merchant, account).
+    raw = []
     for months_back in range(4, 0, -1):
         month_start = (today.replace(day=1) - datetime.timedelta(days=1)).replace(day=1)
         for _ in range(months_back - 1):
@@ -211,14 +218,7 @@ def _demo_transactions(accounts: list[Account]) -> list[Transaction]:
                     acct = cards[0]
                 else:
                     acct = checking
-                rate = acct.base_rate or 0.0
-                for r in (acct.reward_rules or []):
-                    if r.get("category") == category:
-                        rate = max(rate, r["rate"])
-                txns.append(Transaction(
-                    account=acct, date=date, amount=amount, category=category,
-                    merchant=merchant, reward_earned=round(amount * rate, 2),
-                ))
+                raw.append((date, category, amount, merchant, acct))
     # Pin recurring subscriptions to exact merchants monthly
     for months_back in range(4, 0, -1):
         d = today - datetime.timedelta(days=30 * months_back - 3)
@@ -226,16 +226,38 @@ def _demo_transactions(accounts: list[Account]) -> list[Transaction]:
                                    ("Spotify", "streaming", 11.99),
                                    ("Comcast", "utilities", 89.99),
                                    ("T-Mobile", "utilities", 105.00)]:
-            acct = cards[0]
-            rate = acct.base_rate or 0.0
-            for r in (acct.reward_rules or []):
-                if r.get("category") == cat:
-                    rate = max(rate, r["rate"])
-            txns.append(Transaction(
-                account=acct, date=d, amount=amt, category=cat,
-                merchant=merchant, reward_earned=round(amt * rate, 2),
-            ))
-    return txns
+            raw.append((d, cat, amt, merchant, cards[0]))
+
+    # 2) Chronological replay through the engine, caps accruing per card.
+    snaps: dict = {}
+
+    def earned(acct: Account, date: datetime.date, category: str, amount: float) -> float:
+        if acct.kind != "credit":
+            return 0.0
+        snap = snaps.get(acct.name)
+        if snap is None:
+            snap = eng.AccountSnapshot(
+                id=0, name=acct.name, kind="credit",
+                base_rate=acct.base_rate or 0.0,
+                reward_rules=[
+                    eng.RewardRule(r.get("category", "other"), float(r.get("rate", 0.0)),
+                                   r.get("cap"), r.get("cap_period", "quarter"))
+                    for r in (acct.reward_rules or [])
+                ],
+            )
+            snaps[acct.name] = snap
+        purchase = eng.Purchase(amount=amount, category=category, date=date)
+        value, _ = eng.rewards_for(snap, purchase)
+        for period in ("month", "quarter", "year"):
+            key = (category, eng.period_key(date, period))
+            snap.category_spend[key] = snap.category_spend.get(key, 0.0) + amount
+        return round(value, 2)
+
+    return [
+        Transaction(account=acct, date=date, amount=amount, category=category,
+                    merchant=merchant, reward_earned=earned(acct, date, category, amount))
+        for date, category, amount, merchant, acct in sorted(raw, key=lambda r: r[0])
+    ]
 
 
 async def seed_if_empty() -> bool:

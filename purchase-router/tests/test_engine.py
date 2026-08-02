@@ -95,6 +95,28 @@ def test_reward_cap_blends_partial():
     assert value == pytest.approx(3.0)
 
 
+def test_all_category_cap_counts_spend_across_categories():
+    card = make_card(
+        base_rate=0.0,
+        reward_rules=[RewardRule("all", 0.02, cap=1000, cap_period="quarter")],
+        category_spend={("gas", "2026-Q3"): 600.0, ("dining", "2026-Q3"): 400.0},
+    )
+    # $1000 cap fully consumed across gas + dining — no boosted rate left
+    value, _ = rewards_for(card, Purchase(100, "groceries", date=TODAY))
+    assert value == 0.0
+
+
+def test_all_category_cap_blends_partial():
+    card = make_card(
+        base_rate=0.0,
+        reward_rules=[RewardRule("all", 0.02, cap=1000, cap_period="quarter")],
+        category_spend={("gas", "2026-Q3"): 950.0},
+    )
+    # $50 at 2% + $50 at 0% base = $1.00
+    value, _ = rewards_for(card, Purchase(100, "groceries", date=TODAY))
+    assert value == pytest.approx(1.0)
+
+
 # ── sign-up bonus ────────────────────────────────────────────────────────────
 
 def test_bonus_amortized_per_dollar():

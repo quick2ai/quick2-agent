@@ -97,19 +97,19 @@ async def api_route(req: RouteRequest, db: AsyncSession = Depends(get_db)):
     accounts, snaps = await _snapshots(db)
     result = _routing_result(snaps, req.amount, req.category, req.merchant)
 
+    executed = False
+    if req.execute and result["best"]:
+        executed = await _settle_charge(db, accounts, result["best"], req)
+
     decision = RoutingDecision(
         amount=req.amount, category=req.category, merchant=req.merchant,
         chosen_account_id=result["best"]["account_id"] if result["best"] else None,
         chosen_account_name=result["best"]["name"] if result["best"] else "",
         net_benefit=result["best"]["net_benefit"] if result["best"] else 0.0,
         ranking=result["ranking"],
-        executed=bool(req.execute and result["best"]),
+        executed=executed,
     )
     db.add(decision)
-
-    if req.execute and result["best"]:
-        await _settle_charge(db, accounts, result["best"], req)
-
     await db.commit()
     result["decision_id"] = decision.id
     result["executed"] = decision.executed
@@ -117,9 +117,18 @@ async def api_route(req: RouteRequest, db: AsyncSession = Depends(get_db)):
 
 
 async def _settle_charge(db: AsyncSession, accounts: list[Account],
-                         best: dict, req: RouteRequest) -> None:
+                         best: dict, req: RouteRequest) -> bool:
+    """Apply the charge to the winning account.
+
+    Re-checks availability against the account's current row before mutating,
+    so a stale routing snapshot can't push a card over limit or a bank account
+    negative — returns False and settles nothing in that case. (In production
+    the issuer-processor's auth stream serializes authorizations per account.)
+    """
     account = next(a for a in accounts if a.id == best["account_id"])
     if account.kind == "credit":
+        if req.amount > (account.credit_limit or 0) - account.current_balance:
+            return False
         account.current_balance += req.amount
         bonus_active = (
             (account.bonus_spend_required or 0) > (account.bonus_spend_progress or 0)
@@ -132,12 +141,15 @@ async def _settle_charge(db: AsyncSession, accounts: list[Account],
                 (account.bonus_spend_progress or 0) + req.amount,
             )
     else:
+        if req.amount > account.current_balance:
+            return False
         account.current_balance -= req.amount
     db.add(Transaction(
         account_id=account.id, amount=req.amount, category=req.category,
         merchant=req.merchant, routed=True,
         reward_earned=best["breakdown"]["rewards_value"],
     ))
+    return True
 
 
 @app.get("/api/accounts")
@@ -239,19 +251,20 @@ async def tap_route(request: Request,
     accounts, snaps = await _snapshots(db)
     result = _routing_result(snaps, amount, category, merchant)
 
+    executed = False
+    if execute and result["best"]:
+        executed = await _settle_charge(db, accounts, result["best"],
+                                        RouteRequest(amount=amount, category=category,
+                                                     merchant=merchant, execute=True))
     decision = RoutingDecision(
         amount=amount, category=category, merchant=merchant,
         chosen_account_id=result["best"]["account_id"] if result["best"] else None,
         chosen_account_name=result["best"]["name"] if result["best"] else "",
         net_benefit=result["best"]["net_benefit"] if result["best"] else 0.0,
         ranking=result["ranking"],
-        executed=bool(execute and result["best"]),
+        executed=executed,
     )
     db.add(decision)
-    if execute and result["best"]:
-        await _settle_charge(db, accounts, result["best"],
-                             RouteRequest(amount=amount, category=category,
-                                          merchant=merchant, execute=True))
     await db.commit()
 
     return templates.TemplateResponse(request, "_decision.html", {
