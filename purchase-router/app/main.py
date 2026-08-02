@@ -248,6 +248,8 @@ async def tap_route(request: Request,
     """HTMX endpoint backing the tap-to-pay simulator."""
     if amount <= 0:
         return HTMLResponse("<p class='text-red-400'>Amount must be positive.</p>")
+    if category not in CATEGORIES:
+        return HTMLResponse("<p class='text-red-400'>Unknown category.</p>")
     accounts, snaps = await _snapshots(db)
     result = _routing_result(snaps, amount, category, merchant)
 
