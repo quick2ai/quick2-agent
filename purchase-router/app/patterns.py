@@ -59,16 +59,22 @@ def recurring_merchants(transactions: list, min_months: int = 2) -> list[dict]:
 
 
 def missed_rewards(transactions: list, accounts: list) -> dict:
-    """Re-run history through the router: what would optimal routing have earned?
+    """Rewards-domain replay: what would the best card choice have earned?
 
-    Replays chronologically with fresh cap counters: each purchase's spend is
-    credited against the winning card's category caps, so boosted rates
-    exhaust during the replay exactly as they would have in reality.
+    Deliberately compares reward earnings only — float, utilization, and
+    buffer effects depend on balances at purchase time, which can't be
+    reconstructed from history. Revolving cards are excluded from the
+    "optimal" pool because live routing steers away from them (interest on
+    new purchases would swallow the rewards). Replays chronologically with
+    fresh cap counters: each purchase's spend is credited against the
+    winning card's category caps, so boosted rates exhaust during the
+    replay exactly as they would have in reality.
     """
     snapshots = [eng.snapshot_from_orm(a) for a in accounts]
     for snap in snapshots:
         snap.category_spend = {}  # caps accumulate during the replay
-    credit_snaps = [s for s in snapshots if s.kind == "credit" and s.active]
+    credit_snaps = [s for s in snapshots
+                    if s.kind == "credit" and s.active and not s.carries_balance]
     total_actual, total_optimal = 0.0, 0.0
     worst = defaultdict(lambda: {"count": 0, "missed": 0.0})
     months = set()

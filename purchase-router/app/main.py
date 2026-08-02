@@ -121,7 +121,12 @@ async def _settle_charge(db: AsyncSession, accounts: list[Account],
     account = next(a for a in accounts if a.id == best["account_id"])
     if account.kind == "credit":
         account.current_balance += req.amount
-        if (account.bonus_spend_required or 0) > (account.bonus_spend_progress or 0):
+        bonus_active = (
+            (account.bonus_spend_required or 0) > (account.bonus_spend_progress or 0)
+            and (account.bonus_deadline is None
+                 or datetime.date.today() <= account.bonus_deadline)
+        )
+        if bonus_active:
             account.bonus_spend_progress = min(
                 account.bonus_spend_required,
                 (account.bonus_spend_progress or 0) + req.amount,

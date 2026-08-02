@@ -44,6 +44,20 @@ def capped_card_account():
     )
 
 
+def test_missed_rewards_excludes_revolving_cards():
+    # A revolving card's 5% rate must not count as "optimal" — live routing
+    # avoids it because interest on new purchases swallows the rewards.
+    revolving = capped_card_account()
+    revolving.carries_balance = True
+    revolving.reward_rules = [{"category": "groceries", "rate": 0.05}]
+    flat = capped_card_account()
+    flat.id, flat.name = 2, "Flat 2%"
+    flat.base_rate, flat.reward_rules = 0.02, []
+    txns = [txn("Kroger", 100.0, 2026, 7, day=3, category="groceries")]
+    result = missed_rewards(txns, [revolving, flat])
+    assert result["optimal_rewards"] == 2.0  # flat card, not the revolving 5%
+
+
 def test_missed_rewards_replay_respects_caps():
     # Two $100 grocery purchases in the same quarter on a card whose 5% rate
     # caps at $100/quarter: optimal = $5.00 (first) + $1.00 (base, second).

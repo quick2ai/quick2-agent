@@ -66,9 +66,13 @@ bureaus), and paycheck deposit dates.
 
 Pattern recognition over transaction history:
 
-- **Rewards leakage** — replays every historical purchase through the router
-  and quantifies what optimal routing would have earned vs. what you actually
-  earned, annualized, broken down by category.
+- **Rewards leakage** — replays every historical purchase against the
+  wallet's reward structures (honoring category caps as they exhaust, and
+  excluding revolving cards the router avoids) and quantifies what the best
+  card choice would have earned vs. what you actually earned, annualized,
+  broken down by category. Rewards-domain only: float and utilization
+  effects depend on balances at purchase time, which history can't
+  reconstruct.
 - **Spending profile** — monthly/annualized spend per category.
 - **Recurring charge detection** — subscriptions and habitual merchants.
 - **Market recommendations** — compares your wallet's best earn rate per
