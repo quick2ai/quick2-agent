@@ -185,8 +185,10 @@ def _demo_transactions(accounts: list[Account]) -> list[Transaction]:
     checking = next(a for a in accounts if a.name == "Chase Total Checking")
 
     def best_card_for(category: str) -> Account:
-        best, best_rate = cards[0], -1.0
-        for c in cards:
+        # match the insights replay's optimal pool: revolving cards excluded
+        candidates = [c for c in cards if not c.carries_balance] or cards
+        best, best_rate = candidates[0], -1.0
+        for c in candidates:
             rate = c.base_rate or 0.0
             for r in (c.reward_rules or []):
                 if r.get("category") == category:

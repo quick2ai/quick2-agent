@@ -88,6 +88,10 @@ def missed_rewards(transactions: list, accounts: list) -> dict:
             value, _ = eng.rewards_for(snap, purchase)
             if value > best_rewards:
                 best_rewards, best_snap = value, snap
+        if best_snap is None and credit_snaps:
+            # zero-reward purchase (caps exhausted, no base rate) still lands
+            # on a card and consumes cap room
+            best_snap = credit_snaps[0]
         if best_snap is not None:
             for period in ("month", "quarter", "year"):
                 key = (t.category, eng.period_key(t.date, period))
