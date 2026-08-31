@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Tap to Pay · Purchase Router{% endblock %}
+{% block content %}
+
+<div class="max-w-2xl mx-auto">
+    <h1 class="text-2xl font-bold text-white mb-1">📲 Tap to Pay</h1>
+    <p class="text-sm text-slate-400 mb-6">
+        Simulates the in-flight routing decision. In production this runs behind a
+        virtual card: you tap once, the agent picks the funding account in
+        milliseconds, and the charge settles on the winner.
+    </p>
+
+    <form hx-post="/tap/route" hx-target="#decision" hx-indicator="#spinner"
+          class="card glow rounded-xl p-6 space-y-4">
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label class="text-xs text-slate-400 uppercase">Amount ($)</label>
+                <input type="number" name="amount" step="0.01" min="0.01" value="64.20" required
+                       class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+            </div>
+            <div>
+                <label class="text-xs text-slate-400 uppercase">Category</label>
+                <select name="category"
+                        class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                    {% for c in categories %}
+                    <option value="{{ c }}">{{ c.replace('_', ' ') }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div>
+            <label class="text-xs text-slate-400 uppercase">Merchant (optional)</label>
+            <input type="text" name="merchant" placeholder="e.g. Chipotle"
+                   class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+        </div>
+        <div class="flex items-center gap-4">
+            <button type="submit"
+                    class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-6 py-2.5 rounded-lg">
+                ⚡ Route it
+            </button>
+            <label class="flex items-center gap-2 text-sm text-slate-400">
+                <input type="checkbox" name="execute" value="1" class="rounded">
+                Execute charge (updates balances)
+            </label>
+            <span id="spinner" class="htmx-indicator text-slate-500 text-sm">routing…</span>
+        </div>
+    </form>
+
+    <div id="decision" class="mt-6"></div>
+</div>
+{% endblock %}

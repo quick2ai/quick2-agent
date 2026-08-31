@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Accounts · Purchase Router{% endblock %}
+{% block content %}
+
+<h1 class="text-2xl font-bold text-white mb-6">Connected accounts</h1>
+
+<div class="card rounded-xl overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="text-left text-xs text-slate-500 uppercase border-b border-slate-800">
+                <th class="p-3">Account</th>
+                <th class="p-3">Type</th>
+                <th class="p-3 text-right">Balance</th>
+                <th class="p-3 text-right">Limit / APY</th>
+                <th class="p-3 text-right">Utilization</th>
+                <th class="p-3 text-right">Closes in</th>
+                <th class="p-3 text-right">Due in</th>
+                <th class="p-3">Rewards</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-800">
+            {% for row in rows %}
+            {% set a = row.a %}
+            <tr>
+                <td class="p-3">
+                    <div class="font-medium">{{ a.name }}</div>
+                    <div class="text-xs text-slate-500">{{ a.issuer }} ···{{ a.last4 }}</div>
+                    {% if a.carries_balance %}<span class="text-xs text-red-400">⚠ revolving — {{ "%.1f"|format(a.apr*100) }}% APR accruing</span>{% endif %}
+                    {% if a.bonus_value and a.bonus_spend_progress < a.bonus_spend_required %}
+                    <div class="text-xs text-amber-300">🎁 ${{ "{:,.0f}".format(a.bonus_value) }} bonus: ${{ "{:,.0f}".format(a.bonus_spend_progress) }} / ${{ "{:,.0f}".format(a.bonus_spend_required) }}{% if a.bonus_deadline %} by {{ a.bonus_deadline.strftime("%b %d") }}{% endif %}</div>
+                    {% endif %}
+                </td>
+                <td class="p-3 capitalize text-slate-400">{{ a.kind }}</td>
+                <td class="p-3 text-right">${{ "{:,.2f}".format(a.current_balance) }}</td>
+                <td class="p-3 text-right text-slate-400">
+                    {% if a.kind == 'credit' %}${{ "{:,.0f}".format(a.credit_limit) }}
+                    {% elif a.apy > 0.005 %}<span class="text-green-400">{{ "%.2f"|format(a.apy*100) }}%</span>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="p-3 text-right">
+                    {% if row.util is not none %}
+                    <span class="{% if row.util > 0.3 %}text-red-400{% elif row.util > 0.1 %}text-yellow-400{% else %}text-green-400{% endif %}">
+                        {{ "%.0f"|format(row.util * 100) }}%
+                    </span>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="p-3 text-right text-slate-400">{% if row.close_in is not none %}{{ row.close_in }}d{% elif row.deposit_in is not none %}<span class="text-green-400">💰 {{ row.deposit_in }}d</span>{% else %}—{% endif %}</td>
+                <td class="p-3 text-right text-slate-400">{% if row.due_in is not none %}{{ row.due_in }}d{% else %}—{% endif %}</td>
+                <td class="p-3 text-xs text-slate-400">
+                    {% if a.base_rate %}base {{ "%.1f"|format(a.base_rate*100) }}%{% endif %}
+                    {% for r in a.reward_rules or [] %}
+                    <div>{{ "%.1f"|format(r.rate*100) }}% {{ r.category.replace('_',' ') }}{% if r.cap %} (cap ${{ "{:,.0f}".format(r.cap) }}/{{ r.cap_period }}){% endif %}</div>
+                    {% endfor %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<p class="text-xs text-slate-500 mt-4">
+    Demo data. In production, accounts sync via Plaid/issuer APIs — balances, statement
+    dates, and reward calendars refresh automatically.
+</p>
+{% endblock %}

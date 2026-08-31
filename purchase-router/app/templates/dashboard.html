@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Purchase Router{% endblock %}
+{% block content %}
+
+<div class="grid md:grid-cols-4 gap-4 mb-8">
+    <div class="card rounded-xl p-4">
+        <div class="text-xs text-slate-400 uppercase">Total credit owed</div>
+        <div class="text-2xl font-bold">${{ "%.2f"|format(total_owed) }}</div>
+        <div class="text-xs text-slate-500">of ${{ "{:,.0f}".format(total_limit) }} limit</div>
+    </div>
+    <div class="card rounded-xl p-4">
+        <div class="text-xs text-slate-400 uppercase">Overall utilization</div>
+        <div class="text-2xl font-bold {% if aggregate_util > 0.3 %}text-red-400{% elif aggregate_util > 0.1 %}text-yellow-400{% else %}text-green-400{% endif %}">
+            {{ "%.1f"|format(aggregate_util * 100) }}%
+        </div>
+        <div class="text-xs text-slate-500">keep under 30% · ideally under 10%</div>
+    </div>
+    <div class="card rounded-xl p-4">
+        <div class="text-xs text-slate-400 uppercase">Cash across banks</div>
+        <div class="text-2xl font-bold">${{ "{:,.2f}".format(total_cash) }}</div>
+        <div class="text-xs text-slate-500">checking + savings + brokerage</div>
+    </div>
+    <a href="/tap" class="card glow rounded-xl p-4 hover:border-blue-500 transition">
+        <div class="text-xs text-blue-300 uppercase">Ready</div>
+        <div class="text-2xl font-bold text-blue-400">Tap to Pay →</div>
+        <div class="text-xs text-slate-500">route your next purchase</div>
+    </a>
+</div>
+
+<div class="grid md:grid-cols-2 gap-6">
+    <div>
+        <h2 class="font-semibold text-white mb-3">Credit cards</h2>
+        <div class="space-y-2">
+            {% for a in credit_accounts %}
+            {% set util = a.current_balance / a.credit_limit if a.credit_limit else 0 %}
+            <div class="card rounded-lg p-3">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <span class="font-medium">{{ a.name }}</span>
+                        <span class="text-xs text-slate-500">···{{ a.last4 }}</span>
+                        {% if a.carries_balance %}<span class="text-xs bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded ml-1">revolving</span>{% endif %}
+                        {% if a.bonus_value and a.bonus_spend_progress < a.bonus_spend_required %}
+                        <span class="text-xs bg-amber-900/60 text-amber-300 px-1.5 py-0.5 rounded ml-1">bonus in progress</span>
+                        {% endif %}
+                    </div>
+                    <div class="text-right">
+                        <div class="text-sm">${{ "{:,.2f}".format(a.current_balance) }}</div>
+                        <div class="text-xs text-slate-500">{{ "%.0f"|format(util * 100) }}% of ${{ "{:,.0f}".format(a.credit_limit) }}</div>
+                    </div>
+                </div>
+                <div class="mt-2 h-1.5 bg-slate-800 rounded overflow-hidden">
+                    <div class="h-full {% if util > 0.3 %}bg-red-500{% elif util > 0.1 %}bg-yellow-500{% else %}bg-green-500{% endif %}"
+                         style="width: {{ [util * 100, 100]|min }}%"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <h2 class="font-semibold text-white mt-6 mb-3">Bank &amp; investment</h2>
+        <div class="space-y-2">
+            {% for a in bank_accounts %}
+            <div class="card rounded-lg p-3 flex justify-between items-center">
+                <div>
+                    <span class="font-medium">{{ a.name }}</span>
+                    <span class="text-xs text-slate-500 capitalize">{{ a.kind }}</span>
+                    {% if a.apy > 0.005 %}<span class="text-xs text-green-400 ml-1">{{ "%.2f"|format(a.apy * 100) }}% APY</span>{% endif %}
+                </div>
+                <div class="text-sm">${{ "{:,.2f}".format(a.current_balance) }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div>
+        <h2 class="font-semibold text-white mb-3">Upcoming dates</h2>
+        <div class="card rounded-lg divide-y divide-slate-800">
+            {% for e in upcoming %}
+            <div class="p-3 flex justify-between items-center text-sm">
+                <div>
+                    {% if e.type == 'due' %}💳{% elif e.type == 'close' %}📊{% else %}💰{% endif %}
+                    {{ e.label }}
+                </div>
+                <div class="{% if e.days <= 3 %}text-red-400{% elif e.days <= 7 %}text-yellow-400{% else %}text-slate-400{% endif %}">
+                    {{ e.date.strftime("%b %d") }} · {{ e.days }}d
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <h2 class="font-semibold text-white mt-6 mb-3">Recent routing decisions</h2>
+        <div class="card rounded-lg divide-y divide-slate-800">
+            {% for d in recent_decisions %}
+            <div class="p-3 text-sm flex justify-between">
+                <div>
+                    <span class="text-slate-400">${{ "%.2f"|format(d.amount) }} {{ d.category }}</span>
+                    {% if d.merchant %}<span class="text-slate-500">@ {{ d.merchant }}</span>{% endif %}
+                    → <span class="font-medium">{{ d.chosen_account_name }}</span>
+                </div>
+                <div class="text-green-400">+${{ "%.2f"|format(d.net_benefit) }}</div>
+            </div>
+            {% else %}
+            <div class="p-3 text-sm text-slate-500">No decisions yet — try the <a href="/tap" class="text-blue-400">tap-to-pay simulator</a>.</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

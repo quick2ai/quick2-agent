@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Insights · Purchase Router{% endblock %}
+{% block content %}
+
+<div class="flex items-baseline justify-between mb-6">
+    <h1 class="text-2xl font-bold text-white">Insights &amp; annual savings</h1>
+    <div class="text-sm text-slate-400">{{ txn_count }} transactions analyzed</div>
+</div>
+
+<div class="card glow rounded-xl p-6 mb-8 border-green-700/40">
+    <div class="text-xs text-green-400 uppercase font-semibold">Total annual opportunity</div>
+    <div class="text-4xl font-bold text-white mt-1">${{ "{:,.2f}".format(insights.total_annual_opportunity) }}</div>
+    <div class="text-sm text-slate-400 mt-1">
+        missed rewards recovered by routing + top card upgrades + idle cash moved to higher yield
+    </div>
+</div>
+
+<div class="grid md:grid-cols-2 gap-6">
+    <div>
+        <h2 class="font-semibold text-white mb-3">Rewards leakage (what routing fixes)</h2>
+        {% set m = insights.missed_rewards %}
+        <div class="card rounded-xl p-4 mb-3">
+            <div class="flex justify-between text-sm mb-2">
+                <span class="text-slate-400">Earned over {{ m.months_analyzed }} months</span>
+                <span>${{ "%.2f"|format(m.actual_rewards) }}</span>
+            </div>
+            <div class="flex justify-between text-sm mb-2">
+                <span class="text-slate-400">Optimal routing would have earned</span>
+                <span class="text-green-400">${{ "%.2f"|format(m.optimal_rewards) }}</span>
+            </div>
+            <div class="flex justify-between text-sm border-t border-slate-800 pt-2">
+                <span class="text-white font-medium">Missed — annualized</span>
+                <span class="text-red-400 font-bold">${{ "{:,.2f}".format(m.missed_annualized) }}/yr</span>
+            </div>
+        </div>
+        <div class="card rounded-xl divide-y divide-slate-800">
+            {% for leak in m.leaks_by_category %}
+            <div class="p-3 text-sm flex justify-between">
+                <span class="capitalize">{{ leak.category.replace('_',' ') }} <span class="text-xs text-slate-500">({{ leak.purchases }} purchases)</span></span>
+                <span class="text-red-400">-${{ "%.2f"|format(leak.missed) }}</span>
+            </div>
+            {% endfor %}
+        </div>
+
+        <h2 class="font-semibold text-white mt-6 mb-3">Spending profile</h2>
+        <div class="card rounded-xl divide-y divide-slate-800">
+            {% for cat, stats in insights.category_profile.items() %}
+            <div class="p-3 text-sm flex justify-between items-center">
+                <span class="capitalize">{{ cat.replace('_',' ') }}</span>
+                <span class="text-slate-400">${{ "{:,.0f}".format(stats.monthly_avg) }}/mo · <span class="text-slate-300">${{ "{:,.0f}".format(stats.annualized) }}/yr</span></span>
+            </div>
+            {% endfor %}
+        </div>
+
+        <h2 class="font-semibold text-white mt-6 mb-3">Recurring charges detected</h2>
+        <div class="card rounded-xl divide-y divide-slate-800">
+            {% for r in insights.recurring_merchants %}
+            <div class="p-3 text-sm flex justify-between">
+                <span>{{ r.merchant }} <span class="text-xs text-slate-500 capitalize">{{ r.category.replace('_',' ') }} · {{ r.months_seen }} months</span></span>
+                <span class="text-slate-400">${{ "%.2f"|format(r.avg_amount) }}/mo</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div>
+        <h2 class="font-semibold text-white mb-3">💳 Better cards for your spend</h2>
+        <p class="text-xs text-slate-500 mb-3">Based on your actual category spend. Net gain shown after annual fees.</p>
+        <div class="space-y-3">
+            {% for rec in insights.card_recommendations %}
+            <div class="card rounded-xl p-4">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <div class="font-semibold text-white">{{ rec.card }}</div>
+                        <div class="text-xs text-slate-400">{{ rec.headline }}</div>
+                    </div>
+                    <div class="text-green-400 font-bold">+${{ "{:,.0f}".format(rec.est_annual_gain) }}/yr</div>
+                </div>
+                <div class="text-xs text-slate-500 mt-2">
+                    {{ "%.1f"|format(rec.market_rate*100) }}% on {{ rec.category.replace('_',' ') }} vs your best
+                    {{ "%.1f"|format(rec.owned_rate*100) }}% ({{ rec.owned_best_card }}) ·
+                    ${{ "{:,.0f}".format(rec.annual_spend) }}/yr spend
+                    {% if rec.annual_fee %} · ${{ "{:,.0f}".format(rec.annual_fee) }} AF{% endif %}
+                </div>
+                <div class="text-xs text-amber-300 mt-1">🎁 {{ rec.signup_bonus }}</div>
+                <a href="{{ rec.referral_url }}" target="_blank" rel="noopener"
+                   class="inline-block mt-2 text-xs bg-blue-600/20 text-blue-300 border border-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-600/40">
+                    View offer →
+                </a>
+            </div>
+            {% else %}
+            <div class="card rounded-xl p-4 text-sm text-slate-500">Your wallet already beats the market in every category you spend in. 🏆</div>
+            {% endfor %}
+        </div>
+
+        <h2 class="font-semibold text-white mt-6 mb-3">🏦 Idle cash upgrades</h2>
+        <div class="space-y-3">
+            {% for rec in insights.savings_recommendations %}
+            <div class="card rounded-xl p-4">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <div class="font-semibold text-white">{{ rec.offer }}</div>
+                        <div class="text-xs text-slate-400">{{ rec.headline }}</div>
+                    </div>
+                    <div class="text-green-400 font-bold">+${{ "{:,.0f}".format(rec.est_annual_gain) }}/yr</div>
+                </div>
+                <div class="text-xs text-slate-500 mt-2">
+                    Move ${{ "{:,.0f}".format(rec.movable_balance) }} from {{ rec.from_account }}
+                    ({{ "%.2f"|format(rec.current_apy*100) }}% → {{ "%.2f"|format(rec.offer_apy*100) }}% APY)
+                </div>
+                <a href="{{ rec.referral_url }}" target="_blank" rel="noopener"
+                   class="inline-block mt-2 text-xs bg-blue-600/20 text-blue-300 border border-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-600/40">
+                    View offer →
+                </a>
+            </div>
+            {% else %}
+            <div class="card rounded-xl p-4 text-sm text-slate-500">No meaningful yield upgrades found.</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

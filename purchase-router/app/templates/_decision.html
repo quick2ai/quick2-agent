@@ -1,0 +1,65 @@
+{% if result.best %}
+<div class="card glow rounded-xl p-6 border-green-700/50">
+    <div class="flex justify-between items-start">
+        <div>
+            <div class="text-xs text-green-400 uppercase font-semibold">✓ Routed{% if executed %} &amp; charged{% endif %}</div>
+            <div class="text-2xl font-bold text-white mt-1">{{ result.best.name }}</div>
+            <div class="text-sm text-slate-400">
+                ${{ "%.2f"|format(result.purchase.amount) }} · {{ result.purchase.category.replace('_',' ') }}
+                {% if result.purchase.merchant %}@ {{ result.purchase.merchant }}{% endif %}
+            </div>
+        </div>
+        <div class="text-right">
+            <div class="text-2xl font-bold text-green-400">+${{ "%.2f"|format(result.best.net_benefit) }}</div>
+            <div class="text-xs text-slate-500">{{ "%.1f"|format(result.best.effective_rate * 100) }}% effective</div>
+        </div>
+    </div>
+
+    <div class="mt-4 grid grid-cols-3 gap-2 text-xs">
+        {% set b = result.best.breakdown %}
+        <div class="bg-slate-900/60 rounded p-2"><span class="text-slate-500">Rewards</span><br><span class="text-green-400">${{ "%.2f"|format(b.rewards_value) }}</span></div>
+        <div class="bg-slate-900/60 rounded p-2"><span class="text-slate-500">Bonus progress</span><br><span class="{% if b.signup_bonus_value > 0 %}text-amber-300{% else %}text-slate-400{% endif %}">${{ "%.2f"|format(b.signup_bonus_value) }}</span></div>
+        <div class="bg-slate-900/60 rounded p-2"><span class="text-slate-500">Float value</span><br><span class="text-blue-300">${{ "%.2f"|format(b.float_value) }}</span></div>
+        <div class="bg-slate-900/60 rounded p-2"><span class="text-slate-500">Interest cost</span><br><span class="{% if b.interest_cost < 0 %}text-red-400{% else %}text-slate-400{% endif %}">${{ "%.2f"|format(b.interest_cost) }}</span></div>
+        <div class="bg-slate-900/60 rounded p-2"><span class="text-slate-500">Utilization hit</span><br><span class="{% if b.utilization_penalty < 0 %}text-red-400{% else %}text-slate-400{% endif %}">${{ "%.2f"|format(b.utilization_penalty) }}</span></div>
+        <div class="bg-slate-900/60 rounded p-2"><span class="text-slate-500">Buffer risk</span><br><span class="{% if b.cash_buffer_penalty < 0 %}text-red-400{% else %}text-slate-400{% endif %}">${{ "%.2f"|format(b.cash_buffer_penalty) }}</span></div>
+    </div>
+
+    <ul class="mt-4 space-y-1 text-sm text-slate-300">
+        {% for r in result.best.reasons %}
+        <li>· {{ r }}</li>
+        {% endfor %}
+    </ul>
+</div>
+
+<h3 class="text-sm font-semibold text-slate-400 mt-6 mb-2 uppercase">Full ranking</h3>
+<div class="card rounded-xl divide-y divide-slate-800">
+    {% for s in result.ranking %}
+    <details class="p-3 {% if loop.first %}bg-green-900/10{% endif %}">
+        <summary class="flex justify-between items-center cursor-pointer text-sm">
+            <span>
+                <span class="text-slate-500 mr-2">#{{ loop.index }}</span>
+                <span class="{% if loop.first %}font-semibold text-white{% endif %}">{{ s.name }}</span>
+                <span class="text-xs text-slate-500 capitalize ml-1">{{ s.kind }}</span>
+            </span>
+            <span class="{% if s.net_benefit >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
+                {{ "+" if s.net_benefit >= 0 }}${{ "%.2f"|format(s.net_benefit) }}
+            </span>
+        </summary>
+        <ul class="mt-2 pl-6 space-y-0.5 text-xs text-slate-400">
+            {% for r in s.reasons %}<li>· {{ r }}</li>{% endfor %}
+        </ul>
+    </details>
+    {% endfor %}
+    {% for s in result.ineligible %}
+    <div class="p-3 text-sm text-slate-600 flex justify-between">
+        <span>✕ {{ s.name }}</span>
+        <span class="text-xs">{{ s.reasons[0] if s.reasons }}</span>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card rounded-xl p-6 border-red-700/50 text-red-300">
+    No eligible account for this purchase. {% for s in result.ineligible %}<br>· {{ s.name }}: {{ s.reasons[0] if s.reasons }}{% endfor %}
+</div>
+{% endif %}
