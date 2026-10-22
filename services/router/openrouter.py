@@ -14,6 +14,7 @@ deterministic.
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import replace
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -153,9 +154,10 @@ def _capabilities_from_priors(provider: str, tier: str,
 
 def _price_per_mtok(p: str) -> float:
     try:
-        return float(p) * 1_000_000
+        value = float(p) * 1_000_000
+        return value if math.isfinite(value) and value >= 0 else math.inf
     except (TypeError, ValueError):
-        return 0.0
+        return math.inf
 
 
 def _as_model_card(entry: Dict[str, Any]) -> Optional[ModelCard]:
@@ -166,25 +168,22 @@ def _as_model_card(entry: Dict[str, Any]) -> Optional[ModelCard]:
     name = entry.get("name", slug)
 
     pricing = entry.get("pricing", {}) or {}
-    cost_in = _price_per_mtok(pricing.get("prompt", 0))
-    cost_out = _price_per_mtok(pricing.get("completion", 0))
+    cost_in = _price_per_mtok(pricing.get("prompt"))
+    cost_out = _price_per_mtok(pricing.get("completion"))
     ctx = int(entry.get("context_length") or 8_000)
     max_out = int((entry.get("top_provider") or {}).get("max_completion_tokens")
                   or min(ctx // 4, 8_000))
 
-    latency_hint = (entry.get("top_provider") or {}).get("latency_ms", 1500)
+    try:
+        latency_hint = float((entry.get("top_provider") or {}).get("latency_ms"))
+    except (TypeError, ValueError):
+        latency_hint = math.inf
+    if not math.isfinite(latency_hint) or latency_hint < 0:
+        latency_hint = math.inf
     tier = _infer_tier(name, cost_out, latency_hint)
     family = _infer_family(slug)
     caps = _capabilities_from_priors(provider, tier, family)
     mods = _infer_modalities(entry.get("architecture") or {})
-
-    # OpenRouter itself is typically SOC2/GDPR; individual providers vary.
-    compliance = ["SOC2", "GDPR"]
-    # Heuristic boosts for known compliance-strong providers.
-    if provider in ("anthropic", "google", "amazon"):
-        compliance.append("HIPAA")
-    if provider == "amazon":
-        compliance.append("FedRAMP")
 
     return ModelCard(
         model_id=f"openrouter:{slug}",
@@ -194,17 +193,17 @@ def _as_model_card(entry: Dict[str, Any]) -> Optional[ModelCard]:
         capabilities=caps,
         cost_in_per_mtok=cost_in,
         cost_out_per_mtok=cost_out,
-        latency_p50_ms=float(latency_hint) if latency_hint else 1500.0,
+        latency_p50_ms=latency_hint,
         context_window=ctx,
         max_output=max_out,
         modalities=mods,
-        supports_tools=bool(entry.get("supports_tools", True)),
+        supports_tools=entry.get("supports_tools") is True,
         supports_streaming=True,
-        compliance=tuple(compliance),
-        region_hosted=("us", "eu"),
-        open_weights=provider in ("meta-llama", "mistralai", "qwen",
-                                   "deepseek", "nvidia"),
+        compliance=(),
+        region_hosted=(),
+        open_weights=entry.get("open_weights") is True,
         notes=f"OpenRouter: {slug}",
+        catalog_source="openrouter_catalog",
     )
 
 
@@ -328,7 +327,8 @@ def sync_openrouter(*,
     `fallback_to_sample=True` to gracefully degrade to the sample on
     network error.
     """
-    if use_sample or os.getenv("OPENROUTER_FAKE") == "1":
+    sample_used = use_sample or os.getenv("OPENROUTER_FAKE") == "1"
+    if sample_used:
         raw = list(_SAMPLE_MODELS)
     else:
         try:
@@ -337,6 +337,7 @@ def sync_openrouter(*,
             if not fallback_to_sample:
                 raise
             raw = list(_SAMPLE_MODELS)
+            sample_used = True
 
     cards: List[ModelCard] = []
     seen: set = set()
@@ -345,7 +346,7 @@ def sync_openrouter(*,
         if card is None or card.model_id in seen:
             continue
         seen.add(card.model_id)
-        cards.append(card)
+        cards.append(replace(card, catalog_source="openrouter_sample") if sample_used else card)
     return cards
 
 

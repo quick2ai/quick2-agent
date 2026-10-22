@@ -3,6 +3,7 @@ const API = "";  // same-origin
 
 const $  = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+const price = (value, digits = 2) => Number.isFinite(value) ? `$${value.toFixed(digits)}` : "unknown";
 
 const state = {
   models: [],
@@ -93,9 +94,9 @@ function collectConstraints() {
   };
   const chipValues = (id) => $$(`#${id} .chip.on`).map(el => el.textContent);
   const c = {};
-  const lat = readNumber("#c-latency"); if (lat) c.max_latency_ms = lat;
-  const cost = readNumber("#c-cost"); if (cost) c.max_cost_usd = cost;
-  const ctx = readNumber("#c-ctx"); if (ctx) c.min_context_window = ctx;
+  const lat = readNumber("#c-latency"); if (lat !== undefined) c.max_latency_ms = lat;
+  const cost = readNumber("#c-cost"); if (cost !== undefined) c.max_cost_usd = cost;
+  const ctx = readNumber("#c-ctx"); if (ctx !== undefined) c.min_context_window = ctx;
   const region = $("#c-region").value; if (region) c.region = region;
   const vendors = chipValues("c-vendors"); if (vendors.length) c.vendor_allowlist = vendors;
   const comp = chipValues("c-compliance"); if (comp.length) c.compliance_required = comp;
@@ -147,7 +148,7 @@ function renderDecision(d) {
 
   // Intents
   const intSec = document.createElement("section");
-  intSec.innerHTML = `<h3>Top intents (confidence ${d.intent_confidence})</h3>`;
+  intSec.innerHTML = `<h3>Top intents (uncalibrated heuristic ${d.intent_confidence})</h3>`;
   d.top_intents.forEach((m, i) => {
     const row = document.createElement("div");
     row.className = "intent" + (i === 0 ? " primary" : "");
@@ -191,7 +192,8 @@ function renderDecision(d) {
   const ok = !s.requires_approval;
   sSec.innerHTML = `<h3>Safety gate</h3>
     <div class="safety ${ok ? "ok" : "warn"}">
-      <b>${ok ? "No approval required" : "Approval required"}</b>
+      <b>${ok ? "No risk flags detected" : "Review indicated"}</b>
+      <div>Advisory only. Execution permission is checked separately.</div>
       ${s.flags.length ? ` — ${s.flags.join(", ")}` : ""}
       <div class="muted" style="margin-top:6px">
         recommended autonomy: <b style="color:var(--text)">${s.recommended_autonomy}</b>
@@ -240,8 +242,9 @@ function renderModelRow(m, primary) {
     <div class="sub-scores">${subHtml}</div>
     ${bench}
     <div class="model-meta">
-      <span>${m.projected_latency_ms}ms p50</span>
-      <span>$${m.projected_cost_usd.toFixed(6)} projected</span>
+      <span>${m.projected_latency_ms == null ? "unknown latency" : `${m.projected_latency_ms}ms p50`}</span>
+      <span>${price(m.projected_cost_usd, 6)} projected</span>
+      <span>${m.catalog_source || "catalog"} · unverified estimates</span>
       <span>${m.reasons.join(" · ")}</span>
     </div>`;
   return row;
@@ -315,9 +318,9 @@ function renderModels() {
         <td>${m.family}</td>
         <td>${m.tier}</td>
         <td>${m.context_window.toLocaleString()}</td>
-        <td>$${m.cost_in_per_mtok.toFixed(2)}</td>
-        <td>$${m.cost_out_per_mtok.toFixed(2)}</td>
-        <td>${m.latency_p50_ms}</td>
+        <td>${price(m.cost_in_per_mtok)}</td>
+        <td>${price(m.cost_out_per_mtok)}</td>
+        <td>${m.latency_p50_ms ?? "unknown"}</td>
         <td>${(m.modalities || []).join(", ")}</td>
         <td>${(m.compliance || []).join(", ") || "—"}</td>`;
       tbody.appendChild(tr);

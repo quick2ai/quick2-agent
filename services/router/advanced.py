@@ -23,7 +23,7 @@ import hashlib
 import math
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .registries import (
@@ -280,7 +280,7 @@ def infer_skills(intents: Sequence[IntentMatch]) -> List[str]:
 # Constraints
 # ---------------------------------------------------------------------------
 
-@dataclass
+@dataclass(frozen=True)
 class Constraints:
     max_cost_usd: Optional[float] = None
     max_latency_ms: Optional[float] = None
@@ -293,6 +293,31 @@ class Constraints:
     open_weights_only: bool = False
     force_tools: bool = False
     explore: bool = False
+    required_tools: Tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        for name in ("max_cost_usd", "max_latency_ms", "min_context_window"):
+            value = getattr(self, name)
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, (int, float))
+                or not math.isfinite(value) or value < 0
+            ):
+                raise ValueError(f"{name} must be a finite nonnegative number")
+        if self.min_context_window is not None and not isinstance(self.min_context_window, int):
+            raise ValueError("min_context_window must be an integer")
+        for name in ("open_weights_only", "force_tools", "explore"):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"{name} must be a boolean")
+        for name in ("required_modalities", "vendor_allowlist", "vendor_blocklist",
+                     "compliance_required", "required_tools"):
+            value = getattr(self, name)
+            if not isinstance(value, (tuple, list)) or any(
+                not isinstance(v, str) or not v.strip() for v in value
+            ):
+                raise ValueError(f"{name} must be a list of nonempty strings")
+            object.__setattr__(self, name, tuple(value))
+        if self.region is not None and (not isinstance(self.region, str) or not self.region.strip()):
+            raise ValueError("region must be a nonempty string")
 
 
 def _passes_constraints(model: ModelCard, c: Constraints,
@@ -319,12 +344,22 @@ def _passes_constraints(model: ModelCard, c: Constraints,
             return False, [f"cannot handle {m}"]
     if "tools" in features.modalities and not model.supports_tools:
         return False, ["tool-use required"]
-    if c.min_context_window and model.context_window < c.min_context_window:
+    if c.min_context_window is not None and model.context_window < c.min_context_window:
         return False, [f"context {model.context_window} < required"]
-    if c.force_tools and not model.supports_tools:
+    if (c.force_tools or c.required_tools) and not model.supports_tools:
         return False, ["tools required but model lacks them"]
-    if c.max_latency_ms and model.latency_p50_ms > c.max_latency_ms * 1.5:
-        return False, [f"latency {model.latency_p50_ms}ms too high"]
+    output_tokens = _estimated_output_tokens(features)
+    if model.max_output < output_tokens or model.context_window < features.estimated_context_tokens + output_tokens:
+        return False, ["input and estimated output exceed model capacity"]
+    if c.max_latency_ms is not None and (
+        not math.isfinite(model.latency_p50_ms) or model.latency_p50_ms < 0
+        or model.latency_p50_ms > c.max_latency_ms
+    ):
+        return False, ["estimated latency exceeds limit or is unknown"]
+    if c.max_cost_usd is not None:
+        _, cost = _cost_fit(model, features)
+        if not math.isfinite(cost) or cost < 0 or cost > c.max_cost_usd:
+            return False, ["estimated cost exceeds limit or is unknown"]
     return True, reasons
 
 
@@ -349,8 +384,10 @@ class ModelScore:
             "provider": self.model.provider,
             "score": round(self.score, 4),
             "sub_scores": {k: round(v, 4) for k, v in self.sub_scores.items()},
-            "projected_cost_usd": round(self.projected_cost, 6),
-            "projected_latency_ms": round(self.projected_latency_ms, 1),
+            "projected_cost_usd": (round(self.projected_cost, 6) if math.isfinite(self.projected_cost) else None),
+            "projected_latency_ms": (round(self.projected_latency_ms, 1) if math.isfinite(self.projected_latency_ms) else None),
+            "catalog_source": self.model.catalog_source,
+            "metadata_status": "unverified_catalog",
             "benchmark_score": (None if self.benchmark_score is None
                                 else round(self.benchmark_score, 4)),
             "benchmark_contributions": self.benchmark_contributions,
@@ -418,10 +455,16 @@ def _capability_fit(model: ModelCard, intent: Intent,
     return float(max(0.0, min(1.0, base))), bench_score, contribs
 
 
+def _estimated_output_tokens(features: Features) -> int:
+    return max(256, features.estimated_context_tokens // 4)
+
+
 def _cost_fit(model: ModelCard, features: Features) -> Tuple[float, float]:
     # Rough projection assuming 4:1 input:output ratio on the requested text.
     in_tok = features.estimated_context_tokens
-    out_tok = max(256, in_tok // 4)
+    out_tok = _estimated_output_tokens(features)
+    if any(not math.isfinite(v) or v < 0 for v in (model.cost_in_per_mtok, model.cost_out_per_mtok)):
+        return 0.0, math.inf
     cost = (in_tok * model.cost_in_per_mtok + out_tok * model.cost_out_per_mtok) / 1_000_000
     # Map cost to 0..1 with a soft curve (cheaper = higher).
     fit = 1.0 / (1.0 + cost * 20.0)
@@ -429,7 +472,11 @@ def _cost_fit(model: ModelCard, features: Features) -> Tuple[float, float]:
 
 
 def _latency_fit(model: ModelCard, c: Constraints) -> float:
-    budget = c.max_latency_ms or 10_000.0
+    if not math.isfinite(model.latency_p50_ms) or model.latency_p50_ms < 0:
+        return 0.0
+    budget = c.max_latency_ms if c.max_latency_ms is not None else 10_000.0
+    if budget == 0:
+        return 1.0 if model.latency_p50_ms == 0 else 0.0
     if model.latency_p50_ms <= budget:
         return 1.0 - 0.5 * (model.latency_p50_ms / budget)
     over = (model.latency_p50_ms - budget) / budget
@@ -493,14 +540,18 @@ def rank_models(features: Features,
                 constraints: Constraints,
                 request_hash: int = 0,
                 weights: Optional[Dict[str, float]] = None,
+                models: Optional[Sequence[ModelCard]] = None,
                 ) -> List[ModelScore]:
     top_intent = intents[0].intent if intents else INTENTS[0]
     w = dict(WEIGHTS)
     if weights:
+        if any(k not in WEIGHTS or isinstance(v, bool) or not isinstance(v, (int, float))
+               or not math.isfinite(v) or v < 0 for k, v in weights.items()):
+            raise ValueError("weights must use known axes and finite nonnegative values")
         w.update(weights)
 
     ranked: List[ModelScore] = []
-    for model in active_models():
+    for model in active_models() if models is None else models:
         ok, fail_reasons = _passes_constraints(model, constraints, features)
         if not ok:
             continue
@@ -552,6 +603,7 @@ class AgentScore:
             "runtime": self.agent.runtime,
             "score": round(self.score, 4),
             "default_model": self.agent.default_model,
+            "fallback_models": list(self.agent.fallback_models),
             "reasons": self.reasons,
         }
 
@@ -560,6 +612,8 @@ def rank_agents(features: Features,
                 intents: Sequence[IntentMatch],
                 inferred_tools: Sequence[str],
                 constraints: Constraints,
+                 models: Optional[Sequence[ModelCard]] = None,
+                 agents: Optional[Sequence[AgentCard]] = None,
                 ) -> List[AgentScore]:
     if not intents:
         return []
@@ -585,7 +639,31 @@ def rank_agents(features: Features,
     scored: List[AgentScore] = []
     tool_set = set(inferred_tools)
 
-    for agent in AGENT_REGISTRY:
+    eligible_models: Dict[str, List[ModelCard]] = {}
+    for model in active_models() if models is None else models:
+        if _passes_constraints(model, constraints, features)[0]:
+            eligible_models.setdefault(model.model_id, []).append(model)
+    for agent in AGENT_REGISTRY if agents is None else agents:
+        if not set(constraints.compliance_required).issubset(agent.compliance):
+            continue
+        if not set(constraints.required_tools).issubset(agent.supported_tools):
+            continue
+        eligible_ids = []
+        for model_id in (agent.default_model, *agent.fallback_models):
+            model_options = eligible_models.get(model_id, [])
+            if not model_options:
+                continue
+            if constraints.max_cost_usd is not None:
+                if not math.isfinite(agent.cost_overhead_usd) or agent.cost_overhead_usd < 0:
+                    continue
+                if not any(_cost_fit(m, features)[1] + agent.cost_overhead_usd <= constraints.max_cost_usd for m in model_options):
+                    continue
+            if model_id not in eligible_ids:
+                eligible_ids.append(model_id)
+        if not eligible_ids:
+            continue
+        # The returned agent plan contains only eligible model choices.
+        agent = replace(agent, default_model=eligible_ids[0], fallback_models=tuple(eligible_ids[1:]))
         reasons: List[str] = []
         score = 0.0
 
@@ -625,12 +703,6 @@ def rank_agents(features: Features,
         if top.domain == "personal" and agent.autonomy_default == "approver":
             score -= 0.02
 
-        if constraints.compliance_required and not set(constraints.compliance_required).issubset(set(agent.compliance)):
-            # an agent missing compliance is down-weighted but not eliminated;
-            # the safety agent will wrap if needed
-            score -= 0.05
-            reasons.append("compliance-short")
-
         scored.append(AgentScore(agent=agent, score=max(0.0, score), reasons=reasons))
 
     scored.sort(key=lambda s: s.score, reverse=True)
@@ -666,6 +738,9 @@ class RouteDecision:
     def to_dict(self) -> dict:
         return {
             "request_id": self.request_id,
+            "advisory_only": True,
+            "execution_authorized": False,
+            "confidence_kind": "uncalibrated_heuristic",
             "top_intents": [m.to_dict() for m in self.top_intents],
             "intent_confidence": round(self.intent_confidence, 4),
             "features": {
@@ -739,6 +814,9 @@ def route_request(text: str,
     skills = infer_skills(intents)
     tick("infer", {"tools": tools, "skills": skills})
 
+    safety = _safety_gate(feats, intents[0].intent)
+    tick("safety", safety)
+
     rh = int(hashlib.md5(text.encode()).hexdigest()[:8], 16)
     ranked = rank_models(feats, intents, c, request_hash=rh, weights=weights)
     if not ranked:
@@ -752,9 +830,6 @@ def route_request(text: str,
     tick("rank_agents", {
         "primary": agents[0].agent.agent_id if agents else None,
     })
-
-    safety = _safety_gate(feats, intents[0].intent)
-    tick("safety", safety)
 
     request_id = hashlib.sha1(
         f"{text}-{int(time.time() * 1000)}".encode()).hexdigest()[:16]

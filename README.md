@@ -1,6 +1,12 @@
 # Quick2 Agent - Python/FastAPI Microservices Monorepo
 
-A production-ready agent orchestration system built with Python 3.11 and FastAPI, featuring 8 interconnected microservices for intelligent task routing, execution, and validation.
+An agent orchestration system built with Python 3.11 and FastAPI, featuring 8 interconnected microservices for task routing, execution, and validation.
+
+**THALOS integration:** The router includes an internal, advisory policy adapter and
+strict constraint filtering. See [the integration contract](docs/thalos-router-integration.md)
+for the trust boundary, test results, and remaining API/subscription work. The existing
+router console is a development interface; this change does not make it an authenticated
+multi-tenant THALOS deployment.
 
 ## Architecture
 
