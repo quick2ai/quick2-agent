@@ -1,0 +1,605 @@
+{
+  "$defs": {
+    "Action": {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:/-]+$",
+          "title": "Action Id",
+          "type": "string"
+        },
+        "execution_mode": {
+          "enum": [
+            "automate",
+            "augment",
+            "human"
+          ],
+          "title": "Execution Mode",
+          "type": "string"
+        },
+        "authority_bound": {
+          "default": false,
+          "title": "Authority Bound",
+          "type": "boolean"
+        },
+        "input_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Sha256"
+        },
+        "constraints": {
+          "$ref": "#/$defs/Constraints"
+        }
+      },
+      "required": [
+        "action_id",
+        "execution_mode"
+      ],
+      "title": "Action",
+      "type": "object"
+    },
+    "AgentCard": {
+      "additionalProperties": false,
+      "description": "An orchestrated runner (multi-step, tool-using).",
+      "properties": {
+        "agent_id": {
+          "title": "Agent Id",
+          "type": "string"
+        },
+        "runtime": {
+          "title": "Runtime",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "strengths": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Strengths",
+          "type": "array"
+        },
+        "default_model": {
+          "title": "Default Model",
+          "type": "string"
+        },
+        "fallback_models": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Fallback Models",
+          "type": "array"
+        },
+        "supported_tools": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Supported Tools",
+          "type": "array"
+        },
+        "max_parallel": {
+          "default": 1,
+          "title": "Max Parallel",
+          "type": "integer"
+        },
+        "autonomy_default": {
+          "default": "collaborator",
+          "title": "Autonomy Default",
+          "type": "string"
+        },
+        "compliance": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Compliance",
+          "type": "array"
+        },
+        "cost_overhead_usd": {
+          "default": 0.0,
+          "title": "Cost Overhead Usd",
+          "type": "number"
+        },
+        "notes": {
+          "default": "",
+          "title": "Notes",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "runtime",
+        "description",
+        "strengths",
+        "default_model",
+        "fallback_models",
+        "supported_tools"
+      ],
+      "title": "AgentCard",
+      "type": "object"
+    },
+    "ApprovedAgent": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:/-]+$",
+          "title": "Evidence Ref",
+          "type": "string"
+        },
+        "valid_until": {
+          "format": "date-time",
+          "title": "Valid Until",
+          "type": "string"
+        },
+        "agent": {
+          "$ref": "#/$defs/AgentCard"
+        }
+      },
+      "required": [
+        "evidence_ref",
+        "valid_until",
+        "agent"
+      ],
+      "title": "ApprovedAgent",
+      "type": "object"
+    },
+    "ApprovedDeployment": {
+      "additionalProperties": false,
+      "description": "Evidence-backed endpoint snapshot supplied by the trusted resolver.\n\nmodel contains the endpoint's verified restrictions and capacity; catalogue\nlabels alone must never be used to construct an approval.",
+      "properties": {
+        "deployment_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:/-]+$",
+          "title": "Deployment Id",
+          "type": "string"
+        },
+        "evidence_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:/-]+$",
+          "title": "Evidence Ref",
+          "type": "string"
+        },
+        "valid_until": {
+          "format": "date-time",
+          "title": "Valid Until",
+          "type": "string"
+        },
+        "model": {
+          "$ref": "#/$defs/ModelCard"
+        }
+      },
+      "required": [
+        "deployment_id",
+        "evidence_ref",
+        "valid_until",
+        "model"
+      ],
+      "title": "ApprovedDeployment",
+      "type": "object"
+    },
+    "CallerScope": {
+      "additionalProperties": false,
+      "description": "Resolved by authentication, never copied from an untrusted request body.",
+      "properties": {
+        "tenant_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:/-]+$",
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "project_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:/-]+$",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "subject_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:/-]+$",
+          "title": "Subject Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "project_id",
+        "subject_id"
+      ],
+      "title": "CallerScope",
+      "type": "object"
+    },
+    "Constraints": {
+      "additionalProperties": false,
+      "properties": {
+        "max_cost_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Cost Usd"
+        },
+        "max_latency_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Latency Ms"
+        },
+        "min_context_window": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Context Window"
+        },
+        "required_modalities": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Modalities",
+          "type": "array"
+        },
+        "vendor_allowlist": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Vendor Allowlist",
+          "type": "array"
+        },
+        "vendor_blocklist": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Vendor Blocklist",
+          "type": "array"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Region"
+        },
+        "compliance_required": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Compliance Required",
+          "type": "array"
+        },
+        "open_weights_only": {
+          "default": false,
+          "title": "Open Weights Only",
+          "type": "boolean"
+        },
+        "force_tools": {
+          "default": false,
+          "title": "Force Tools",
+          "type": "boolean"
+        },
+        "explore": {
+          "default": false,
+          "title": "Explore",
+          "type": "boolean"
+        },
+        "required_tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Tools",
+          "type": "array"
+        }
+      },
+      "title": "Constraints",
+      "type": "object"
+    },
+    "ContextBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "context_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:/-]+$",
+          "title": "Context Id",
+          "type": "string"
+        },
+        "profile_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:/-]+$",
+          "title": "Profile Version",
+          "type": "string"
+        },
+        "profile_snapshot_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Profile Snapshot Sha256",
+          "type": "string"
+        },
+        "policy_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:/-]+$",
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "policy_snapshot_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Policy Snapshot Sha256",
+          "type": "string"
+        },
+        "resolver_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:/-]+$",
+          "title": "Resolver Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "context_id",
+        "profile_version",
+        "profile_snapshot_sha256",
+        "policy_version",
+        "policy_snapshot_sha256",
+        "resolver_version"
+      ],
+      "title": "ContextBinding",
+      "type": "object"
+    },
+    "ModelCard": {
+      "additionalProperties": false,
+      "properties": {
+        "model_id": {
+          "title": "Model Id",
+          "type": "string"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "family": {
+          "title": "Family",
+          "type": "string"
+        },
+        "tier": {
+          "title": "Tier",
+          "type": "string"
+        },
+        "capabilities": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Capabilities",
+          "type": "object"
+        },
+        "cost_in_per_mtok": {
+          "title": "Cost In Per Mtok",
+          "type": "number"
+        },
+        "cost_out_per_mtok": {
+          "title": "Cost Out Per Mtok",
+          "type": "number"
+        },
+        "latency_p50_ms": {
+          "title": "Latency P50 Ms",
+          "type": "number"
+        },
+        "context_window": {
+          "title": "Context Window",
+          "type": "integer"
+        },
+        "max_output": {
+          "title": "Max Output",
+          "type": "integer"
+        },
+        "modalities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Modalities",
+          "type": "array"
+        },
+        "supports_tools": {
+          "default": true,
+          "title": "Supports Tools",
+          "type": "boolean"
+        },
+        "supports_streaming": {
+          "default": true,
+          "title": "Supports Streaming",
+          "type": "boolean"
+        },
+        "compliance": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Compliance",
+          "type": "array"
+        },
+        "region_hosted": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Region Hosted",
+          "type": "array"
+        },
+        "open_weights": {
+          "default": false,
+          "title": "Open Weights",
+          "type": "boolean"
+        },
+        "notes": {
+          "default": "",
+          "title": "Notes",
+          "type": "string"
+        },
+        "catalog_source": {
+          "default": "curated_snapshot",
+          "title": "Catalog Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model_id",
+        "provider",
+        "family",
+        "tier",
+        "capabilities",
+        "cost_in_per_mtok",
+        "cost_out_per_mtok",
+        "latency_p50_ms",
+        "context_window",
+        "max_output",
+        "modalities"
+      ],
+      "title": "ModelCard",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1.0",
+      "default": "0.1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "decision_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:/-]+$",
+      "title": "Decision Id",
+      "type": "string"
+    },
+    "scope": {
+      "$ref": "#/$defs/CallerScope"
+    },
+    "context": {
+      "$ref": "#/$defs/ContextBinding"
+    },
+    "valid_until": {
+      "format": "date-time",
+      "title": "Valid Until",
+      "type": "string"
+    },
+    "processing": {
+      "enum": [
+        "authorized",
+        "held",
+        "unknown"
+      ],
+      "title": "Processing",
+      "type": "string"
+    },
+    "no_ai": {
+      "default": false,
+      "title": "No Ai",
+      "type": "boolean"
+    },
+    "permitted_processors": {
+      "default": [],
+      "items": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_.:/-]+$",
+        "type": "string"
+      },
+      "title": "Permitted Processors",
+      "type": "array"
+    },
+    "disposition": {
+      "enum": [
+        "proceed",
+        "redirect",
+        "clarify",
+        "defer",
+        "decline"
+      ],
+      "title": "Disposition",
+      "type": "string"
+    },
+    "actions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Action"
+      },
+      "maxItems": 32,
+      "title": "Actions",
+      "type": "array"
+    },
+    "deployments": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ApprovedDeployment"
+      },
+      "maxItems": 256,
+      "title": "Deployments",
+      "type": "array"
+    },
+    "agents": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ApprovedAgent"
+      },
+      "maxItems": 64,
+      "title": "Agents",
+      "type": "array"
+    }
+  },
+  "required": [
+    "decision_id",
+    "scope",
+    "context",
+    "valid_until",
+    "processing",
+    "disposition"
+  ],
+  "title": "ResolvedDecision",
+  "type": "object"
+}

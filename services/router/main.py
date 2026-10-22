@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import sys
 from datetime import datetime
@@ -40,7 +41,7 @@ from services.router.registries import (
 )
 from services.router.taxonomy import INTENTS, group_by_domain, group_by_vertical
 
-app = FastAPI(title="Router Service", version="2.0.0")
+app = FastAPI(title="Router Service", version="2.1.0")
 FastAPIInstrumentor.instrument_app(app)
 
 _STATIC_DIR = Path(__file__).parent / "static"
@@ -157,26 +158,11 @@ class AdvancedRouteRequest(BaseModel):
 
 
 def _coerce_constraints(raw: Dict[str, Any]) -> Constraints:
-    def _tuple(value):
-        if value is None:
-            return ()
-        if isinstance(value, (list, tuple, set)):
-            return tuple(value)
-        return (value,)
-
-    return Constraints(
-        max_cost_usd=raw.get("max_cost_usd"),
-        max_latency_ms=raw.get("max_latency_ms"),
-        min_context_window=raw.get("min_context_window"),
-        required_modalities=_tuple(raw.get("required_modalities")),
-        vendor_allowlist=_tuple(raw.get("vendor_allowlist")),
-        vendor_blocklist=_tuple(raw.get("vendor_blocklist")),
-        region=raw.get("region"),
-        compliance_required=_tuple(raw.get("compliance_required")),
-        open_weights_only=bool(raw.get("open_weights_only", False)),
-        force_tools=bool(raw.get("force_tools", False)),
-        explore=bool(raw.get("explore", False)),
-    )
+    try:
+        return Constraints(**raw)
+    except (TypeError, ValueError) as exc:
+        # Never silently ignore misspelled restrictions or coerce "false" to True.
+        raise HTTPException(status_code=422, detail="Invalid routing constraints") from exc
 
 
 @app.post("/v2/route")
@@ -224,10 +210,13 @@ async def rank_models_endpoint(req: AdvancedRouteRequest):
     """Rank candidate LLMs for the given request without agent selection."""
     features = extract_features(req.text, req.context)
     intents = classify_intent(features)
-    ranked = rank_models(
-        features, intents, _coerce_constraints(req.constraints),
-        weights=req.weights,
-    )
+    try:
+        ranked = rank_models(
+            features, intents, _coerce_constraints(req.constraints),
+            weights=req.weights,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid routing input") from exc
     if not ranked:
         raise HTTPException(
             status_code=422,
@@ -261,9 +250,9 @@ async def list_models():
                 "family": m.family,
                 "tier": m.tier,
                 "capabilities": m.capabilities,
-                "cost_in_per_mtok": m.cost_in_per_mtok,
-                "cost_out_per_mtok": m.cost_out_per_mtok,
-                "latency_p50_ms": m.latency_p50_ms,
+                "cost_in_per_mtok": m.cost_in_per_mtok if math.isfinite(m.cost_in_per_mtok) else None,
+                "cost_out_per_mtok": m.cost_out_per_mtok if math.isfinite(m.cost_out_per_mtok) else None,
+                "latency_p50_ms": m.latency_p50_ms if math.isfinite(m.latency_p50_ms) else None,
                 "context_window": m.context_window,
                 "max_output": m.max_output,
                 "modalities": list(m.modalities),
@@ -272,6 +261,8 @@ async def list_models():
                 "region_hosted": list(m.region_hosted),
                 "open_weights": m.open_weights,
                 "notes": m.notes,
+                "catalog_source": m.catalog_source,
+                "metadata_status": "unverified_catalog",
             }
             for m in models
         ],
@@ -283,7 +274,7 @@ class OpenRouterSyncRequest(BaseModel):
         default=False,
         description="Use embedded sample catalog instead of hitting the network")
     fallback_to_sample: bool = Field(
-        default=True,
+        default=False,
         description="Fall back to the sample catalog if the fetch fails")
     api_key: Optional[str] = Field(
         default=None,
@@ -324,6 +315,7 @@ async def openrouter_sync(req: OpenRouterSyncRequest):
 @app.get("/v2/benchmarks")
 async def list_benchmarks():
     return {
+        "evidence_status": "unverified_static_snapshot",
         "benchmarks": [
             {
                 "bench_id": b.bench_id,
@@ -347,7 +339,8 @@ async def benchmarks_top(vertical: str, k: int = 5):
     if not ranked:
         raise HTTPException(status_code=404,
                             detail=f"No benchmark data for vertical '{vertical}'")
-    return {"vertical": vertical, "ranked": ranked}
+    return {"vertical": vertical, "ranked": ranked,
+            "evidence_status": "unverified_static_snapshot"}
 
 
 @app.get("/v2/agents")

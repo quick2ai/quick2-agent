@@ -41,9 +41,10 @@ class ModelCard:
     supports_tools: bool = True
     supports_streaming: bool = True
     compliance: Tuple[str, ...] = ()    # SOC2, HIPAA, GDPR, FedRAMP, ISO27001
-    region_hosted: Tuple[str, ...] = ("us", "eu")
+    region_hosted: Tuple[str, ...] = ()  # unknown until deployment-specific evidence exists
     open_weights: bool = False
     notes: str = ""
+    catalog_source: str = "curated_snapshot"
 
 
 def _caps(**kw) -> Dict[str, float]:
